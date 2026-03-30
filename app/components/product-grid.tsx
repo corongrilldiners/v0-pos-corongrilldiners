@@ -38,7 +38,7 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
           <CardContent className="p-3">
             <div>
               <h3 className="font-medium line-clamp-1">{product.name}</h3>
-              <p className="text-sm text-muted-foreground">${product.price.toFixed(2)}</p>
+              <p className="text-sm text-muted-foreground">₱{product.price.toFixed(2)}</p>
             </div>
           </CardContent>
         </Card>
