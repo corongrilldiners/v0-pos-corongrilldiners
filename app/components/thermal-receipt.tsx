@@ -21,6 +21,7 @@ interface ThermalReceiptProps {
   serverName: string
   dateTime: string
   includeServiceCharge: boolean
+  paymentMethod?: string
 }
 
 const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
@@ -36,6 +37,7 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
       serverName,
       dateTime,
       includeServiceCharge,
+      paymentMethod = "cash",
     },
     ref
   ) => {
@@ -49,7 +51,7 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
         <div className="text-center mb-3">
           <div className="flex justify-center mb-2">
             <Image
-              src="/coron-grill-logo.png"
+              src="/corongrilldiners-logo.jpeg"
               alt="Coron Grill Diners"
               width={80}
               height={80}
@@ -101,8 +103,8 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
           {items.map((item) => (
             <div key={item.id} className="flex text-[10px]">
               <span className="w-8 text-center">{item.quantity}</span>
-              <span className="flex-1 truncate pr-1">{item.name}</span>
-              <span className="w-16 text-right">
+              <span className="flex-1 pr-1 break-words leading-tight">{item.name}</span>
+              <span className="w-16 text-right flex-shrink-0">
                 {(item.price * item.quantity).toFixed(2)}
               </span>
             </div>
@@ -141,10 +143,30 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
         {/* Divider */}
         <div className="border-t border-dashed border-gray-400 my-3" />
 
+        {/* QR Code for Digital Payment */}
+        {paymentMethod !== "cash" && (
+          <>
+            <div className="text-center mb-3">
+              <p className="text-[10px] font-bold mb-2">SCAN TO PAY</p>
+              <div className="flex justify-center">
+                <div className="w-20 h-20 border-2 border-black flex items-center justify-center bg-white">
+                  <div className="text-[8px] text-center text-gray-500">
+                    GCash / Maya
+                    <br />
+                    QR Code
+                  </div>
+                </div>
+              </div>
+              <p className="text-[8px] mt-1 text-gray-600">GCash / Maya Accepted</p>
+            </div>
+            <div className="border-t border-dashed border-gray-400 my-3" />
+          </>
+        )}
+
         {/* Footer */}
         <div className="text-center text-[10px]">
-          <p className="font-semibold">Thank you for dining with us!</p>
-          <p className="mt-1">Visit us again in Coron!</p>
+          <p className="font-semibold">Thank you for dining at Coron Grill Diners!</p>
+          <p className="mt-1">Enjoy your stay in Coron!</p>
           <p className="mt-2 text-[8px] text-gray-500">
             --- END OF RECEIPT ---
           </p>
