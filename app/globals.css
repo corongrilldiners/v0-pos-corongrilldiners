@@ -99,3 +99,48 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Thermal Receipt Print Styles */
+@media print {
+  /* Hide everything except the receipt */
+  body * {
+    visibility: hidden;
+  }
+  
+  .thermal-receipt,
+  .thermal-receipt * {
+    visibility: visible;
+  }
+  
+  .thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    padding: 5mm !important;
+    margin: 0 !important;
+    background: white !important;
+    font-family: 'Courier New', Courier, 'Lucida Console', monospace !important;
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+    color: black !important;
+  }
+  
+  /* Remove shadows, borders for cleaner print */
+  .thermal-receipt * {
+    box-shadow: none !important;
+  }
+  
+  /* Page setup for thermal paper */
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+  
+  /* Ensure images print */
+  .thermal-receipt img {
+    max-width: 60px !important;
+    height: auto !important;
+  }
+}
