@@ -3,13 +3,14 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { CartProvider } from "./context/cart-context"
+import { ProductProvider } from "./context/product-context"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "POS System",
-  description: "Point of Sale System",
-    generator: 'v0.app'
+  title: "Coron Grill Diners - POS System",
+  description: "Point of Sale System for Coron Grill Diners",
+  generator: 'v0.app'
 }
 
 export default function RootLayout({
@@ -20,7 +21,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.className} bg-gray-100`}>
-        <CartProvider>{children}</CartProvider>
+        <ProductProvider>
+          <CartProvider>{children}</CartProvider>
+        </ProductProvider>
       </body>
     </html>
   )

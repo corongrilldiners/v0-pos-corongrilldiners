@@ -64,7 +64,7 @@ export default function SuccessPage() {
                   {item.name} × {item.quantity}
                 </p>
               </div>
-              <p>${(item.price * item.quantity).toFixed(2)}</p>
+              <p>₱{(item.price * item.quantity).toFixed(2)}</p>
             </div>
           ))}
         </div>
@@ -74,15 +74,15 @@ export default function SuccessPage() {
         <div className="space-y-2">
           <div className="flex justify-between">
             <p>Subtotal</p>
-            <p>${cartTotal.toFixed(2)}</p>
+            <p>₱{cartTotal.toFixed(2)}</p>
           </div>
           <div className="flex justify-between">
             <p>Tax (10%)</p>
-            <p>${tax.toFixed(2)}</p>
+            <p>₱{tax.toFixed(2)}</p>
           </div>
           <div className="flex justify-between font-bold">
             <p>Total</p>
-            <p>${grandTotal.toFixed(2)}</p>
+            <p>₱{grandTotal.toFixed(2)}</p>
           </div>
         </div>
 

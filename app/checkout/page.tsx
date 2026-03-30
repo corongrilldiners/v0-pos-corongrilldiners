@@ -55,10 +55,10 @@ export default function CheckoutPage() {
                 <div>
                   <p className="font-medium">{item.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    ${item.price.toFixed(2)} × {item.quantity}
+                    ₱{item.price.toFixed(2)} x {item.quantity}
                   </p>
                 </div>
-                <p className="font-medium">${(item.price * item.quantity).toFixed(2)}</p>
+                <p className="font-medium">₱{(item.price * item.quantity).toFixed(2)}</p>
               </div>
             ))}
 
@@ -67,15 +67,15 @@ export default function CheckoutPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <p>Subtotal</p>
-                <p>${cartTotal.toFixed(2)}</p>
+                <p>₱{cartTotal.toFixed(2)}</p>
               </div>
               <div className="flex justify-between">
                 <p>Tax (10%)</p>
-                <p>${tax.toFixed(2)}</p>
+                <p>₱{tax.toFixed(2)}</p>
               </div>
               <div className="flex justify-between font-bold">
                 <p>Total</p>
-                <p>${grandTotal.toFixed(2)}</p>
+                <p>₱{grandTotal.toFixed(2)}</p>
               </div>
             </div>
           </div>
