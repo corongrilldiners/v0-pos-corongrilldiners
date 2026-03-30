@@ -38,7 +38,10 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
           <CardContent className="p-3">
             <div>
               <h3 className="font-medium line-clamp-1">{product.name}</h3>
-              <p className="text-sm text-muted-foreground">₱{product.price.toFixed(2)}</p>
+              {product.description && (
+                <p className="text-xs text-muted-foreground/70 line-clamp-1">{product.description}</p>
+              )}
+              <p className="text-sm text-muted-foreground font-semibold">₱{product.price.toFixed(2)}</p>
             </div>
           </CardContent>
         </Card>
