@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, CreditCard, Wallet, Printer, FileText } from "lucide-react"
+import { ArrowLeft, CreditCard, Wallet, Printer, FileText, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -21,9 +21,8 @@ import { useCart } from "../context/cart-context"
 import ThermalReceipt from "../components/thermal-receipt"
 
 function generateOrderNumber() {
-  const timestamp = Date.now().toString(36).toUpperCase()
-  const random = Math.random().toString(36).substring(2, 6).toUpperCase()
-  return `CGD-${timestamp}-${random}`
+  const random = Math.floor(1000 + Math.random() * 9000)
+  return `#CGD-${random}`
 }
 
 function formatDateTime() {
@@ -49,16 +48,30 @@ export default function CheckoutPage() {
   const [showSummaryModal, setShowSummaryModal] = useState(false)
   const [orderNumber] = useState(generateOrderNumber())
   const [dateTime] = useState(formatDateTime())
+  const [isLoading, setIsLoading] = useState(true)
+  const [cartSnapshot, setCartSnapshot] = useState<typeof cart>([])
+  const [cartTotalSnapshot, setCartTotalSnapshot] = useState(0)
   const receiptRef = useRef<HTMLDivElement>(null)
 
-  const serviceCharge = includeServiceCharge ? cartTotal * 0.05 : 0
-  const grandTotal = cartTotal + serviceCharge
+  // Fix for empty cart race condition - wait for cart state to sync
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCartSnapshot([...cart])
+      setCartTotalSnapshot(cartTotal)
+      setIsLoading(false)
+    }, 800)
+
+    return () => clearTimeout(timer)
+  }, [cart, cartTotal])
+
+  const serviceCharge = includeServiceCharge ? cartTotalSnapshot * 0.05 : 0
+  const grandTotal = cartTotalSnapshot + serviceCharge
 
   const tenderedAmount = parseFloat(amountTendered) || 0
   const change = tenderedAmount >= grandTotal ? tenderedAmount - grandTotal : 0
 
   const handleCheckout = () => {
-    if (tenderedAmount < grandTotal) {
+    if (paymentMethod === "cash" && tenderedAmount < grandTotal) {
       alert("Amount tendered is less than the total amount due.")
       return
     }
@@ -71,9 +84,10 @@ export default function CheckoutPage() {
 
   const handleConfirmAndPrint = () => {
     handlePrint()
+    // Auto-reset after print dialog closes
     setTimeout(() => {
       clearCart()
-      router.push("/success")
+      router.push("/")
     }, 500)
   }
 
@@ -82,7 +96,20 @@ export default function CheckoutPage() {
     router.push("/success")
   }
 
-  if (cart.length === 0) {
+  // Loading state with spinner
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center print:hidden">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
+          <p className="mt-4 text-muted-foreground">Loading order details...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Check for empty cart after loading
+  if (cartSnapshot.length === 0) {
     return (
       <div className="flex h-screen items-center justify-center print:hidden">
         <div className="text-center">
@@ -113,15 +140,15 @@ export default function CheckoutPage() {
           <div>
             <h2 className="mb-4 text-xl font-semibold">Order Summary</h2>
             <div className="rounded-lg border p-4 bg-white">
-              {cart.map((item) => (
+              {cartSnapshot.map((item) => (
                 <div key={item.id} className="mb-3 flex justify-between">
-                  <div>
+                  <div className="flex-1 pr-4">
                     <p className="font-medium">{item.name}</p>
                     <p className="text-sm text-muted-foreground">
                       ₱{item.price.toFixed(2)} x {item.quantity}
                     </p>
                   </div>
-                  <p className="font-medium">
+                  <p className="font-medium flex-shrink-0">
                     ₱{(item.price * item.quantity).toFixed(2)}
                   </p>
                 </div>
@@ -132,7 +159,7 @@ export default function CheckoutPage() {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <p>Subtotal</p>
-                  <p>₱{cartTotal.toFixed(2)}</p>
+                  <p>₱{cartTotalSnapshot.toFixed(2)}</p>
                 </div>
 
                 <div className="flex items-center space-x-2">
@@ -201,6 +228,16 @@ export default function CheckoutPage() {
                       Credit/Debit Card
                     </Label>
                   </div>
+
+                  <div className="mt-2 flex items-center space-x-2 rounded-md border p-3">
+                    <RadioGroupItem value="gcash" id="gcash" />
+                    <Label htmlFor="gcash" className="flex items-center cursor-pointer">
+                      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                        <circle cx="12" cy="12" r="10" />
+                      </svg>
+                      GCash / Maya
+                    </Label>
+                  </div>
                 </RadioGroup>
               </div>
 
@@ -239,9 +276,9 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* Summary Modal */}
+      {/* Summary Modal with Print Button */}
       <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
-        <DialogContent className="max-w-md print:hidden">
+        <DialogContent className="max-w-lg print:hidden">
           <DialogHeader>
             <DialogTitle>Order Confirmation</DialogTitle>
             <DialogDescription>
@@ -249,10 +286,10 @@ export default function CheckoutPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[60vh] overflow-auto">
+          <div className="max-h-[60vh] overflow-auto border rounded-lg">
             <ThermalReceipt
-              items={cart}
-              subtotal={cartTotal}
+              items={cartSnapshot}
+              subtotal={cartTotalSnapshot}
               serviceCharge={serviceCharge}
               grandTotal={grandTotal}
               amountTendered={tenderedAmount}
@@ -261,6 +298,7 @@ export default function CheckoutPage() {
               serverName={serverName}
               dateTime={dateTime}
               includeServiceCharge={includeServiceCharge}
+              paymentMethod={paymentMethod}
             />
           </div>
 
@@ -273,7 +311,7 @@ export default function CheckoutPage() {
               <FileText className="mr-2 h-4 w-4" />
               Digital Record Only
             </Button>
-            <Button className="flex-1" onClick={handleConfirmAndPrint}>
+            <Button className="flex-1 bg-primary" onClick={handleConfirmAndPrint}>
               <Printer className="mr-2 h-4 w-4" />
               Confirm & Print
             </Button>
@@ -285,8 +323,8 @@ export default function CheckoutPage() {
       <div className="hidden print:block">
         <ThermalReceipt
           ref={receiptRef}
-          items={cart}
-          subtotal={cartTotal}
+          items={cartSnapshot}
+          subtotal={cartTotalSnapshot}
           serviceCharge={serviceCharge}
           grandTotal={grandTotal}
           amountTendered={tenderedAmount}
@@ -295,6 +333,7 @@ export default function CheckoutPage() {
           serverName={serverName}
           dateTime={dateTime}
           includeServiceCharge={includeServiceCharge}
+          paymentMethod={paymentMethod}
         />
       </div>
     </>
