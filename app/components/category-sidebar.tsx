@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useState } from "react"
 
 import {
   LayoutGrid,
@@ -22,157 +23,255 @@ import {
   Beer,
   GlassWater,
   PartyPopper,
+  Settings,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Check,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { useProducts } from "../context/product-context"
 
 interface CategorySidebarProps {
   selectedCategory: string
   onSelectCategory: (category: string) => void
 }
 
-interface CategoryItem {
-  id: string
-  name: string
-  icon: React.ElementType
+const categoryIcons: Record<string, React.ElementType> = {
+  "all": LayoutGrid,
+  "main-course": Utensils,
+  "appetizer": Soup,
+  "pasta-noodles": ChefHat,
+  "grill-diners-budget": Flame,
+  "all-day-breakfast-silog": Egg,
+  "combo-meals": UtensilsCrossed,
+  "special-set": Package,
+  "snacks-burger-sub": Sandwich,
+  "american-breakfast": Coffee,
+  "continental-breakfast": Croissant,
+  "side-order": SaladIcon,
+  "sizzlers": CookingPot,
+  "salads": LeafyGreen,
+  "desserts": IceCream,
+  "shakes": CupSoda,
+  "beers": Beer,
+  "drinks": GlassWater,
+  "beer-buckets": PartyPopper,
 }
 
-const categories: CategoryItem[] = [
-  {
-    id: "all",
-    name: "All Products",
-    icon: LayoutGrid,
-  },
-  {
-    id: "main-course",
-    name: "Main Course",
-    icon: Utensils,
-  },
-  {
-    id: "appetizer",
-    name: "Appetizer",
-    icon: Soup,
-  },
-  {
-    id: "pasta-noodles",
-    name: "Pasta & Noodles",
-    icon: ChefHat,
-  },
-  {
-    id: "grill-diners-budget",
-    name: "Grill Diners Budget",
-    icon: Flame,
-  },
-  {
-    id: "all-day-breakfast-silog",
-    name: "All Day Breakfast Silog",
-    icon: Egg,
-  },
-  {
-    id: "combo-meals",
-    name: "Combo Meal's (On Hot Plate)",
-    icon: UtensilsCrossed,
-  },
-  {
-    id: "special-set",
-    name: "Special Set",
-    icon: Package,
-  },
-  {
-    id: "snacks-burger-sub",
-    name: "Snack's Burger & Sub",
-    icon: Sandwich,
-  },
-  {
-    id: "american-breakfast",
-    name: "American Breakfast",
-    icon: Coffee,
-  },
-  {
-    id: "continental-breakfast",
-    name: "Continental Breakfast",
-    icon: Croissant,
-  },
-  {
-    id: "side-order",
-    name: "Side Order",
-    icon: SaladIcon,
-  },
-  {
-    id: "sizzlers",
-    name: "Sizzlers",
-    icon: CookingPot,
-  },
-  {
-    id: "salads",
-    name: "Salads",
-    icon: LeafyGreen,
-  },
-  {
-    id: "desserts",
-    name: "Desserts",
-    icon: IceCream,
-  },
-  {
-    id: "shakes",
-    name: "Shakes",
-    icon: CupSoda,
-  },
-  {
-    id: "beers",
-    name: "Beers",
-    icon: Beer,
-  },
-  {
-    id: "drinks",
-    name: "Drinks",
-    icon: GlassWater,
-  },
-  {
-    id: "beer-buckets",
-    name: "Beer Buckets (w/ free Sizzling Bopis)",
-    icon: PartyPopper,
-  },
-]
-
 export default function CategorySidebar({ selectedCategory, onSelectCategory }: CategorySidebarProps) {
+  const { categories, isEditMode, toggleEditMode, addCategory, updateCategory, deleteCategory, products } = useProducts()
+  const [isAddingCategory, setIsAddingCategory] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState("")
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editingCategoryName, setEditingCategoryName] = useState("")
+
+  const handleAddCategory = () => {
+    if (newCategoryName.trim()) {
+      const id = newCategoryName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+      addCategory({ id, name: newCategoryName.trim() })
+      setNewCategoryName("")
+      setIsAddingCategory(false)
+    }
+  }
+
+  const handleEditCategory = (id: string) => {
+    if (editingCategoryName.trim()) {
+      updateCategory(id, editingCategoryName.trim())
+      setEditingCategoryId(null)
+      setEditingCategoryName("")
+    }
+  }
+
+  const handleDeleteCategory = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const categoryProducts = products.filter(p => p.category === id)
+    if (categoryProducts.length > 0) {
+      alert(`Cannot delete category. It has ${categoryProducts.length} product(s). Please remove or reassign them first.`)
+      return
+    }
+    if (confirm("Are you sure you want to delete this category?")) {
+      deleteCategory(id)
+      if (selectedCategory === id) {
+        onSelectCategory("all")
+      }
+    }
+  }
+
+  const getProductCount = (categoryId: string) => {
+    if (categoryId === "all") return products.length
+    return products.filter(p => p.category === categoryId).length
+  }
+
+  const isPromoCategory = (categoryId: string) => {
+    return categoryId === "beer-buckets" || categoryId === "grill-diners-budget"
+  }
+
   return (
     <div className="w-56 border-r bg-background flex flex-col h-full">
       <div className="p-4 pb-2 border-b">
-        <h2 className="text-lg font-semibold">Categories</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Categories</h2>
+          <Button
+            variant={isEditMode ? "default" : "ghost"}
+            size="icon"
+            className="h-8 w-8"
+            onClick={toggleEditMode}
+            title={isEditMode ? "Exit Edit Mode" : "Manage Menu"}
+          >
+            <Settings className={cn("h-4 w-4", isEditMode && "animate-spin")} />
+          </Button>
+        </div>
+        {isEditMode && (
+          <Badge variant="secondary" className="mt-2 w-full justify-center text-xs">
+            Edit Mode Active
+          </Badge>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hide p-3">
         <div className="grid gap-2">
-          {categories.map((category, index) => {
-            const Icon = category.icon
-            const isAllProducts = category.id === "all"
+          {/* All Products Button */}
+          <Button
+            variant="ghost"
+            className={cn(
+              "flex h-auto flex-col items-center justify-center py-2 px-2 border bg-transparent min-h-[60px] font-semibold",
+              selectedCategory === "all"
+                ? "border-2 border-primary bg-primary/10 text-primary font-medium"
+                : "border-muted text-muted-foreground hover:border-muted-foreground hover:text-foreground",
+              "hover:bg-primary/5 transition-colors",
+            )}
+            onClick={() => onSelectCategory("all")}
+          >
+            <LayoutGrid className="mb-1 h-6 w-6" />
+            <span className="text-sm font-semibold text-center leading-tight">All Products</span>
+            <span className="text-[10px] text-muted-foreground">({getProductCount("all")})</span>
+          </Button>
+
+          {/* Category Buttons */}
+          {categories.map((category) => {
+            const Icon = categoryIcons[category.id] || Package
             const isActive = selectedCategory === category.id
+            const isEditing = editingCategoryId === category.id
+            const isPromo = isPromoCategory(category.id)
             
             return (
-              <Button
-                key={category.id}
-                variant="ghost"
-                className={cn(
-                  "flex h-auto flex-col items-center justify-center py-2 px-2 border bg-transparent min-h-[60px]",
-                  isAllProducts && "font-semibold",
-                  isActive
-                    ? "border-2 border-primary bg-primary/10 text-primary font-medium"
-                    : "border-muted text-muted-foreground hover:border-muted-foreground hover:text-foreground",
-                  "hover:bg-primary/5 transition-colors",
+              <div key={category.id} className="relative">
+                {isEditing ? (
+                  <div className="flex items-center gap-1 p-2 border rounded-md bg-background">
+                    <Input
+                      value={editingCategoryName}
+                      onChange={(e) => setEditingCategoryName(e.target.value)}
+                      className="h-7 text-xs"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleEditCategory(category.id)
+                        if (e.key === "Escape") setEditingCategoryId(null)
+                      }}
+                    />
+                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleEditCategory(category.id)}>
+                      <Check className="h-3 w-3" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEditingCategoryId(null)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    className={cn(
+                      "w-full flex h-auto flex-col items-center justify-center py-2 px-2 border bg-transparent min-h-[60px]",
+                      isActive
+                        ? "border-2 border-primary bg-primary/10 text-primary font-medium"
+                        : "border-muted text-muted-foreground hover:border-muted-foreground hover:text-foreground",
+                      isPromo && !isActive && "border-orange-500/50",
+                      "hover:bg-primary/5 transition-colors",
+                    )}
+                    onClick={() => onSelectCategory(category.id)}
+                  >
+                    {isPromo && (
+                      <Badge className="absolute -top-1 -right-1 bg-orange-500 text-[8px] px-1 py-0 h-4">
+                        PROMO
+                      </Badge>
+                    )}
+                    <Icon className="mb-1 h-5 w-5" />
+                    <span className={cn(
+                      "text-xs text-center leading-tight",
+                      category.id === "beer-buckets" && "text-[10px]"
+                    )}>
+                      {category.name}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">({getProductCount(category.id)})</span>
+                  </Button>
                 )}
-                onClick={() => onSelectCategory(category.id)}
-              >
-                <Icon className={cn("mb-1 h-5 w-5", isAllProducts && "h-6 w-6")} />
-                <span className={cn(
-                  "text-xs text-center leading-tight",
-                  isAllProducts && "text-sm font-semibold",
-                  category.id === "beer-buckets" && "text-[10px]"
-                )}>
-                  {category.name}
-                </span>
-              </Button>
+
+                {/* Edit/Delete buttons in Edit Mode */}
+                {isEditMode && !isEditing && (
+                  <div className="absolute -top-1 -right-1 flex gap-0.5">
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-5 w-5 rounded-full"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingCategoryId(category.id)
+                        setEditingCategoryName(category.name)
+                      }}
+                    >
+                      <Pencil className="h-2.5 w-2.5" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className="h-5 w-5 rounded-full"
+                      onClick={(e) => handleDeleteCategory(category.id, e)}
+                    >
+                      <Trash2 className="h-2.5 w-2.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
             )
           })}
+
+          {/* Add Category Button (only in Edit Mode) */}
+          {isEditMode && (
+            <>
+              {isAddingCategory ? (
+                <div className="flex items-center gap-1 p-2 border border-dashed rounded-md">
+                  <Input
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="Category name"
+                    className="h-7 text-xs"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleAddCategory()
+                      if (e.key === "Escape") setIsAddingCategory(false)
+                    }}
+                  />
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={handleAddCategory}>
+                    <Check className="h-3 w-3" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setIsAddingCategory(false)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="flex h-auto flex-col items-center justify-center py-2 px-2 border-2 border-dashed border-muted-foreground/30 bg-transparent min-h-[60px] hover:bg-primary/5 hover:border-primary/50 transition-colors"
+                  onClick={() => setIsAddingCategory(true)}
+                >
+                  <Plus className="mb-1 h-5 w-5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Add Category</span>
+                </Button>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

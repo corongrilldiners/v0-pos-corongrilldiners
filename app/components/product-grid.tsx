@@ -1,11 +1,16 @@
 "use client"
 
+import { useState } from "react"
 import Image from "next/image"
-import { PlusCircle } from "lucide-react"
+import { PlusCircle, Plus, Pencil, Trash2 } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { useCart } from "../context/cart-context"
-import { products } from "../data/products"
+import { useProducts } from "../context/product-context"
+import ProductModal from "./product-modal"
+import type { Product } from "../context/cart-context"
 
 interface ProductGridProps {
   category: string
@@ -14,6 +19,10 @@ interface ProductGridProps {
 
 export default function ProductGrid({ category, searchQuery }: ProductGridProps) {
   const { addToCart } = useCart()
+  const { products, isEditMode, deleteProduct } = useProducts()
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [modalMode, setModalMode] = useState<"add" | "edit">("add")
 
   const filteredProducts = products.filter((product) => {
     const matchesCategory = category === "all" || product.category === category
@@ -21,37 +30,127 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
     return matchesCategory && matchesSearch
   })
 
-  return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-      {filteredProducts.map((product) => (
-        <Card
-          key={product.id}
-          className="overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer group"
-          onClick={() => addToCart(product)}
-        >
-          <div className="relative aspect-square">
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 z-10">
-              <PlusCircle className="h-10 w-10 text-white" />
-            </div>
-            <Image src={product.image || "/placeholder.svg"} alt={product.name} fill className="object-cover" />
-          </div>
-          <CardContent className="p-3">
-            <div>
-              <h3 className="font-medium line-clamp-1">{product.name}</h3>
-              {product.description && (
-                <p className="text-xs text-muted-foreground/70 line-clamp-1">{product.description}</p>
-              )}
-              <p className="text-sm text-muted-foreground font-semibold">₱{product.price.toFixed(2)}</p>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+  const handleAddProduct = () => {
+    setEditingProduct(null)
+    setModalMode("add")
+    setIsModalOpen(true)
+  }
 
-      {filteredProducts.length === 0 && (
-        <div className="col-span-full py-12 text-center">
-          <p className="text-muted-foreground">No products found</p>
-        </div>
-      )}
-    </div>
+  const handleEditProduct = (product: Product, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingProduct(product)
+    setModalMode("edit")
+    setIsModalOpen(true)
+  }
+
+  const handleDeleteProduct = (productId: number, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirm("Are you sure you want to delete this product?")) {
+      deleteProduct(productId)
+    }
+  }
+
+  const isPromoCategory = (cat: string) => {
+    return cat === "beer-buckets" || cat === "grill-diners-budget"
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {/* Add New Product Button - Only visible in Edit Mode or at the top of All Products */}
+        {(isEditMode || category === "all") && (
+          <Card
+            className="overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer border-2 border-dashed border-primary/50 bg-primary/5 min-h-[200px] flex items-center justify-center"
+            onClick={handleAddProduct}
+          >
+            <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-2">
+                <Plus className="h-6 w-6 text-primary" />
+              </div>
+              <h3 className="font-medium text-primary">Add New Product</h3>
+              <p className="text-xs text-muted-foreground mt-1">Click to add item</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {filteredProducts.map((product) => (
+          <Card
+            key={product.id}
+            className={`overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer group relative ${
+              isPromoCategory(product.category) ? "ring-2 ring-orange-500 ring-offset-2" : ""
+            }`}
+            onClick={() => !isEditMode && addToCart(product)}
+          >
+            {/* PROMO Badge for Beer Buckets and Grill Diners Budget */}
+            {isPromoCategory(product.category) && (
+              <Badge className="absolute top-2 left-2 z-20 bg-orange-500 hover:bg-orange-600 text-white text-[10px] px-1.5 py-0.5">
+                PROMO
+              </Badge>
+            )}
+
+            {/* Edit Mode Icons */}
+            {isEditMode && (
+              <div className="absolute top-2 right-2 z-20 flex gap-1">
+                <Button
+                  size="icon"
+                  variant="secondary"
+                  className="h-7 w-7 bg-background/90 hover:bg-background"
+                  onClick={(e) => handleEditProduct(product, e)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="destructive"
+                  className="h-7 w-7"
+                  onClick={(e) => handleDeleteProduct(product.id, e)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+
+            <div className="relative aspect-square">
+              {!isEditMode && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 z-10">
+                  <PlusCircle className="h-10 w-10 text-white" />
+                </div>
+              )}
+              <Image
+                src={product.image || "/placeholder.svg"}
+                alt={product.name}
+                fill
+                className="object-cover"
+              />
+            </div>
+            <CardContent className="p-3">
+              <div>
+                <h3 className="font-medium line-clamp-1">{product.name}</h3>
+                {product.description && (
+                  <p className="text-xs text-muted-foreground/70 line-clamp-1">{product.description}</p>
+                )}
+                <p className="text-sm text-primary font-semibold">₱{product.price.toFixed(2)}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+
+        {filteredProducts.length === 0 && !isEditMode && category !== "all" && (
+          <div className="col-span-full py-12 text-center">
+            <p className="text-muted-foreground">No items found in this category</p>
+            <Button variant="link" onClick={handleAddProduct} className="mt-2">
+              <Plus className="h-4 w-4 mr-1" /> Add the first item
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <ProductModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        product={editingProduct}
+        mode={modalMode}
+      />
+    </>
   )
 }
