@@ -41,6 +41,9 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
     },
     ref
   ) => {
+    const qrData = encodeURIComponent("GCash/Maya Payment – Coron Grill Diners")
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${qrData}&color=000000&bgcolor=ffffff&margin=4`
+
     return (
       <div
         ref={ref}
@@ -58,7 +61,7 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
               className="object-contain"
             />
           </div>
-          <h1 className="text-base font-bold">CORON GRILL DINERS</h1>
+          <h1 className="text-base font-bold tracking-wide">CORON GRILL DINERS</h1>
           <p className="text-[10px] leading-tight mt-1">
             Beside Panda House, 1 Don Pedro St,
             <br />
@@ -86,6 +89,10 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
             <span>Server:</span>
             <span>{serverName}</span>
           </div>
+          <div className="flex justify-between">
+            <span>Payment:</span>
+            <span className="uppercase">{paymentMethod}</span>
+          </div>
         </div>
 
         {/* Divider */}
@@ -105,7 +112,7 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
               <span className="w-8 text-center">{item.quantity}</span>
               <span className="flex-1 pr-1 break-words leading-tight">{item.name}</span>
               <span className="w-16 text-right flex-shrink-0">
-                {(item.price * item.quantity).toFixed(2)}
+                ₱{(item.price * item.quantity).toFixed(2)}
               </span>
             </div>
           ))}
@@ -130,43 +137,46 @@ const ThermalReceipt = forwardRef<HTMLDivElement, ThermalReceiptProps>(
             <span>GRAND TOTAL:</span>
             <span>₱{grandTotal.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between mt-2">
-            <span>Amount Tendered:</span>
-            <span>₱{amountTendered.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between font-bold">
-            <span>Change:</span>
-            <span>₱{change.toFixed(2)}</span>
-          </div>
+          {paymentMethod === "cash" && (
+            <>
+              <div className="flex justify-between mt-2">
+                <span>Amount Tendered:</span>
+                <span>₱{amountTendered.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between font-bold">
+                <span>Change:</span>
+                <span>₱{change.toFixed(2)}</span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Divider */}
         <div className="border-t border-dashed border-gray-400 my-3" />
 
-        {/* QR Code for Digital Payment */}
-        {paymentMethod !== "cash" && (
-          <>
-            <div className="text-center mb-3">
-              <p className="text-[10px] font-bold mb-2">SCAN TO PAY</p>
-              <div className="flex justify-center">
-                <div className="w-20 h-20 border-2 border-black flex items-center justify-center bg-white">
-                  <div className="text-[8px] text-center text-gray-500">
-                    GCash / Maya
-                    <br />
-                    QR Code
-                  </div>
-                </div>
-              </div>
-              <p className="text-[8px] mt-1 text-gray-600">GCash / Maya Accepted</p>
-            </div>
-            <div className="border-t border-dashed border-gray-400 my-3" />
-          </>
-        )}
+        {/* GCash / Maya QR Code — always shown */}
+        <div className="text-center mb-3">
+          <p className="text-[10px] font-bold mb-1 tracking-wide">SCAN TO PAY — GCASH / MAYA</p>
+          <div className="flex justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={qrUrl}
+              alt="GCash / Maya QR Code"
+              width={120}
+              height={120}
+              style={{ imageRendering: "pixelated" }}
+            />
+          </div>
+          <p className="text-[9px] mt-1 font-semibold">GCash &amp; Maya Accepted Here</p>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-dashed border-gray-400 my-3" />
 
         {/* Footer */}
         <div className="text-center text-[10px]">
-          <p className="font-semibold">Thank you for dining at Coron Grill Diners!</p>
-          <p className="mt-1">Enjoy your stay in Coron!</p>
+          <p className="font-bold">Thank you for dining!</p>
+          <p className="mt-0.5">Visit us again in Coron!</p>
           <p className="mt-2 text-[8px] text-gray-500">
             --- END OF RECEIPT ---
           </p>

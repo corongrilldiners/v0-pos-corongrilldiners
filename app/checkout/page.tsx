@@ -49,17 +49,18 @@ export default function CheckoutPage() {
   const [orderNumber] = useState(generateOrderNumber())
   const [dateTime] = useState(formatDateTime())
   const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [cartSnapshot, setCartSnapshot] = useState<typeof cart>([])
   const [cartTotalSnapshot, setCartTotalSnapshot] = useState(0)
   const receiptRef = useRef<HTMLDivElement>(null)
 
-  // Fix for empty cart race condition - wait for cart state to sync
+  // 1-second spinner to ensure cart state is fully synced before showing checkout
   useEffect(() => {
     const timer = setTimeout(() => {
       setCartSnapshot([...cart])
       setCartTotalSnapshot(cartTotal)
       setIsLoading(false)
-    }, 800)
+    }, 1000)
 
     return () => clearTimeout(timer)
   }, [cart, cartTotal])
@@ -78,25 +79,50 @@ export default function CheckoutPage() {
     setShowSummaryModal(true)
   }
 
-  const handlePrint = () => {
-    window.print()
+  const recordSale = async () => {
+    try {
+      await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNumber,
+          items: cartSnapshot.map((item) => ({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+          })),
+          subtotal: cartTotalSnapshot,
+          serviceCharge,
+          grandTotal,
+          paymentMethod,
+          amountTendered: tenderedAmount,
+          changeAmount: change,
+          serverName,
+        }),
+      })
+    } catch (err) {
+      console.error("Failed to record sale:", err)
+    }
   }
 
-  const handleConfirmAndPrint = () => {
-    handlePrint()
-    // Auto-reset after print dialog closes
+  const handleConfirmAndPrint = async () => {
+    setIsSaving(true)
+    await recordSale()
+    setIsSaving(false)
+    window.print()
     setTimeout(() => {
       clearCart()
       router.push("/")
     }, 500)
   }
 
-  const handleDigitalOnly = () => {
+  const handleDigitalOnly = async () => {
+    await recordSale()
     clearCart()
     router.push("/success")
   }
 
-  // Loading state with spinner
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center print:hidden">
@@ -108,7 +134,6 @@ export default function CheckoutPage() {
     )
   }
 
-  // Check for empty cart after loading
   if (cartSnapshot.length === 0) {
     return (
       <div className="flex h-screen items-center justify-center print:hidden">
@@ -307,13 +332,22 @@ export default function CheckoutPage() {
               variant="outline"
               className="flex-1"
               onClick={handleDigitalOnly}
+              disabled={isSaving}
             >
               <FileText className="mr-2 h-4 w-4" />
               Digital Record Only
             </Button>
-            <Button className="flex-1 bg-primary" onClick={handleConfirmAndPrint}>
-              <Printer className="mr-2 h-4 w-4" />
-              Confirm & Print
+            <Button
+              className="flex-1 bg-primary"
+              onClick={handleConfirmAndPrint}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Printer className="mr-2 h-4 w-4" />
+              )}
+              {isSaving ? "Saving..." : "Confirm & Print"}
             </Button>
           </div>
         </DialogContent>
