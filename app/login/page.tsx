@@ -34,12 +34,12 @@ export default function LoginPage() {
       redirect: false,
     })
 
-    setIsLoading(false)
-
     if (result?.error) {
+      setIsLoading(false)
       setError("Invalid username or password. Please try again.")
     } else {
-      router.replace("/")
+      // Hard redirect ensures session cookie is picked up instantly
+      window.location.href = "/"
     }
   }
 

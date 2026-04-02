@@ -3,9 +3,13 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { ArrowLeft, RefreshCw, ShoppingBag, TrendingUp, Wallet, CreditCard, Lock } from "lucide-react"
+import {
+  ArrowLeft, RefreshCw, ShoppingBag, TrendingUp, Wallet,
+  CreditCard, Lock, Clock, CheckCircle, AlertTriangle, Users,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
 
 interface DailyStats {
   total_orders: number
@@ -40,16 +44,27 @@ interface SalesData {
   recentOrders: RecentOrder[]
 }
 
-function formatCurrency(value: number) {
-  return `₱${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+interface ShiftRecord {
+  id: number
+  cashier_name: string
+  cashier_username: string
+  start_time: string
+  end_time: string | null
+  status: "open" | "closed"
+  start_balance: number
+  end_balance: number | null
+  total_cash_sales: number
+  total_sales: number
+  expected_cash: number | null
+  discrepancy: number | null
 }
 
-function formatTime(isoString: string) {
-  return new Date(isoString).toLocaleTimeString("en-PH", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  })
+function fmt(n: number) {
+  return `₱${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })
 }
 
 function paymentIcon(method: string) {
@@ -62,25 +77,37 @@ function paymentIcon(method: string) {
   )
 }
 
+type Tab = "sales" | "shifts"
+
 export default function AdminPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
-  const [data, setData] = useState<SalesData | null>(null)
+  const [activeTab, setActiveTab] = useState<Tab>("sales")
+  const [salesData, setSalesData] = useState<SalesData | null>(null)
+  const [shifts, setShifts] = useState<ShiftRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedDate, setSelectedDate] = useState(
-    new Date().toLocaleDateString("en-CA")
-  )
+  const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString("en-CA"))
 
   const isAdmin = session?.user?.role === "admin"
 
-  const fetchData = async (date: string) => {
+  const fetchSales = async (date: string) => {
+    const res = await fetch(`/api/sales?date=${date}`)
+    const json = await res.json()
+    setSalesData(json)
+  }
+
+  const fetchShifts = async (date: string) => {
+    const res = await fetch(`/api/shifts?date=${date}`)
+    const json = await res.json()
+    setShifts(json.shifts ?? [])
+  }
+
+  const fetchAll = async (date: string) => {
     setIsLoading(true)
     try {
-      const res = await fetch(`/api/sales?date=${date}`)
-      const json = await res.json()
-      setData(json)
+      await Promise.all([fetchSales(date), fetchShifts(date)])
     } catch (err) {
-      console.error("Failed to fetch sales data:", err)
+      console.error("Failed to fetch data:", err)
     } finally {
       setIsLoading(false)
     }
@@ -88,7 +115,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (status === "authenticated" && isAdmin) {
-      fetchData(selectedDate)
+      fetchAll(selectedDate)
     }
   }, [selectedDate, status, isAdmin])
 
@@ -116,6 +143,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto max-w-5xl py-8 px-4">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => router.push("/")}>
@@ -123,7 +151,7 @@ export default function AdminPage() {
             </Button>
             <div>
               <h1 className="text-2xl font-bold">Admin Dashboard</h1>
-              <p className="text-sm text-muted-foreground">Coron Grill Diners — Sales Overview</p>
+              <p className="text-sm text-muted-foreground">Coron Grill Diners</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -136,7 +164,7 @@ export default function AdminPage() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => fetchData(selectedDate)}
+              onClick={() => fetchAll(selectedDate)}
               disabled={isLoading}
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -144,120 +172,230 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-1 mb-6 bg-white border rounded-lg p-1 w-fit">
+          <Button
+            variant={activeTab === "sales" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("sales")}
+            className="gap-2"
+          >
+            <TrendingUp className="h-4 w-4" />Sales Overview
+          </Button>
+          <Button
+            variant={activeTab === "shifts" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("shifts")}
+            className="gap-2"
+          >
+            <Users className="h-4 w-4" />Shift History
+          </Button>
+        </div>
+
         {isLoading ? (
           <div className="flex justify-center items-center py-32">
             <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
-        ) : data ? (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white rounded-xl border p-5 shadow-sm">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <TrendingUp className="h-4 w-4" />
-                  <span className="text-sm font-medium">Total Daily Sales</span>
-                </div>
-                <p className="text-3xl font-bold text-green-600">{formatCurrency(data.stats.total_sales)}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {selectedDate === new Date().toLocaleDateString("en-CA") ? "Today" : selectedDate}
-                </p>
-              </div>
-
-              <div className="bg-white rounded-xl border p-5 shadow-sm">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <ShoppingBag className="h-4 w-4" />
-                  <span className="text-sm font-medium">Total Orders</span>
-                </div>
-                <p className="text-3xl font-bold">{data.stats.total_orders}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {data.stats.total_orders === 1 ? "order" : "orders"} completed
-                </p>
-              </div>
-
-              <div className="bg-white rounded-xl border p-5 shadow-sm">
-                <div className="flex items-center gap-2 text-muted-foreground mb-1">
-                  <Wallet className="h-4 w-4" />
-                  <span className="text-sm font-medium">Avg. Order Value</span>
-                </div>
-                <p className="text-3xl font-bold">
-                  {data.stats.total_orders > 0
-                    ? formatCurrency(data.stats.total_sales / data.stats.total_orders)
-                    : "₱0.00"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">per transaction</p>
-              </div>
-            </div>
-
-            {data.paymentBreakdown.length > 0 && (
-              <div className="bg-white rounded-xl border p-5 shadow-sm mb-6">
-                <h2 className="font-semibold mb-3">Payment Method Breakdown</h2>
-                <div className="space-y-2">
-                  {data.paymentBreakdown.map((p) => (
-                    <div key={p.payment_method} className="flex items-center justify-between">
-                      <span className="text-sm capitalize flex items-center">
-                        {paymentIcon(p.payment_method)}
-                        {p.payment_method} ({p.count} {p.count === 1 ? "order" : "orders"})
-                      </span>
-                      <span className="font-medium text-sm">{formatCurrency(p.total)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="bg-white rounded-xl border shadow-sm">
-              <div className="p-5 border-b">
-                <h2 className="font-semibold">Recent Orders</h2>
-              </div>
-              {data.recentOrders.length === 0 ? (
-                <div className="py-16 text-center text-muted-foreground">
-                  <ShoppingBag className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                  <p>No orders recorded for this date</p>
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {data.recentOrders.map((order) => (
-                    <div key={order.id} className="p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono font-bold text-sm">{order.order_number}</span>
-                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full capitalize">
-                              {paymentIcon(order.payment_method)}
-                              {order.payment_method}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {formatTime(order.created_at)} · Served by: <span className="font-medium">{order.created_by || order.server_name}</span>
-                          </p>
-                          <div className="mt-2 text-xs text-gray-600 space-y-0.5">
-                            {order.items.map((item, i) => (
-                              <span key={i} className="mr-2">
-                                {item.quantity}× {item.name}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0 ml-4">
-                          <p className="font-bold text-green-600">{formatCurrency(order.grand_total)}</p>
-                          {order.service_charge > 0 && (
-                            <p className="text-[10px] text-muted-foreground">
-                              incl. {formatCurrency(order.service_charge)} svc
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
+        ) : activeTab === "sales" ? (
+          <SalesTab data={salesData} selectedDate={selectedDate} />
         ) : (
-          <div className="text-center py-16 text-muted-foreground">
-            Failed to load data. Please refresh.
+          <ShiftsTab shifts={shifts} selectedDate={selectedDate} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SalesTab({ data, selectedDate }: { data: SalesData | null; selectedDate: string }) {
+  if (!data) return <div className="text-center py-16 text-muted-foreground">Failed to load data.</div>
+
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-xl border p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <TrendingUp className="h-4 w-4" />
+            <span className="text-sm font-medium">Total Daily Sales</span>
+          </div>
+          <p className="text-3xl font-bold text-green-600">{fmt(data.stats.total_sales)}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {selectedDate === new Date().toLocaleDateString("en-CA") ? "Today" : selectedDate}
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl border p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <ShoppingBag className="h-4 w-4" />
+            <span className="text-sm font-medium">Total Orders</span>
+          </div>
+          <p className="text-3xl font-bold">{data.stats.total_orders}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {data.stats.total_orders === 1 ? "order" : "orders"} completed
+          </p>
+        </div>
+
+        <div className="bg-white rounded-xl border p-5 shadow-sm">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <Wallet className="h-4 w-4" />
+            <span className="text-sm font-medium">Avg. Order Value</span>
+          </div>
+          <p className="text-3xl font-bold">
+            {data.stats.total_orders > 0 ? fmt(data.stats.total_sales / data.stats.total_orders) : "₱0.00"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">per transaction</p>
+        </div>
+      </div>
+
+      {data.paymentBreakdown.length > 0 && (
+        <div className="bg-white rounded-xl border p-5 shadow-sm mb-6">
+          <h2 className="font-semibold mb-3">Payment Method Breakdown</h2>
+          <div className="space-y-2">
+            {data.paymentBreakdown.map((p) => (
+              <div key={p.payment_method} className="flex items-center justify-between">
+                <span className="text-sm capitalize flex items-center">
+                  {paymentIcon(p.payment_method)}
+                  {p.payment_method} ({p.count} {p.count === 1 ? "order" : "orders"})
+                </span>
+                <span className="font-medium text-sm">{fmt(p.total)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border shadow-sm">
+        <div className="p-5 border-b">
+          <h2 className="font-semibold">Recent Orders</h2>
+        </div>
+        {data.recentOrders.length === 0 ? (
+          <div className="py-16 text-center text-muted-foreground">
+            <ShoppingBag className="h-10 w-10 mx-auto mb-2 opacity-30" />
+            <p>No orders recorded for this date</p>
+          </div>
+        ) : (
+          <div className="divide-y">
+            {data.recentOrders.map((order) => (
+              <div key={order.id} className="p-4 hover:bg-gray-50 transition-colors">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-sm">{order.order_number}</span>
+                      <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full capitalize">
+                        {paymentIcon(order.payment_method)}{order.payment_method}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {formatTime(order.created_at)} · Served by: <span className="font-medium">{order.created_by || order.server_name}</span>
+                    </p>
+                    <div className="mt-2 text-xs text-gray-600">
+                      {order.items.map((item, i) => (
+                        <span key={i} className="mr-2">{item.quantity}× {item.name}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-4">
+                    <p className="font-bold text-green-600">{fmt(order.grand_total)}</p>
+                    {order.service_charge > 0 && (
+                      <p className="text-[10px] text-muted-foreground">incl. {fmt(order.service_charge)} svc</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
+    </>
+  )
+}
+
+function ShiftsTab({ shifts, selectedDate }: { shifts: ShiftRecord[]; selectedDate: string }) {
+  return (
+    <div className="bg-white rounded-xl border shadow-sm">
+      <div className="p-5 border-b flex items-center justify-between">
+        <h2 className="font-semibold">
+          Shift Records —{" "}
+          {selectedDate === new Date().toLocaleDateString("en-CA") ? "Today" : selectedDate}
+        </h2>
+        <span className="text-sm text-muted-foreground">{shifts.length} shift{shifts.length !== 1 ? "s" : ""}</span>
+      </div>
+      {shifts.length === 0 ? (
+        <div className="py-16 text-center text-muted-foreground">
+          <Clock className="h-10 w-10 mx-auto mb-2 opacity-30" />
+          <p>No shifts recorded for this date</p>
+        </div>
+      ) : (
+        <div className="divide-y">
+          {shifts.map((shift) => {
+            const disc = shift.discrepancy ?? 0
+            const isOpen = shift.status === "open"
+            const isOver = !isOpen && disc > 0
+            const isShort = !isOpen && disc < 0
+            const isExact = !isOpen && disc === 0
+
+            return (
+              <div key={shift.id} className="p-4 hover:bg-gray-50 transition-colors">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="font-semibold">{shift.cashier_name}</span>
+                      <span className="text-xs text-muted-foreground">@{shift.cashier_username}</span>
+                      {isOpen ? (
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-green-100 text-green-700">
+                          <Clock className="h-2.5 w-2.5 mr-0.5" />Active
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Closed</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {formatTime(shift.start_time)}
+                      {shift.end_time ? ` → ${formatTime(shift.end_time)}` : " (ongoing)"}
+                    </p>
+
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-xs">
+                      <div>
+                        <span className="text-muted-foreground block">Starting Cash</span>
+                        <span className="font-mono font-medium">{fmt(shift.start_balance)}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Cash Sales</span>
+                        <span className="font-mono font-medium text-green-600">+{fmt(shift.total_cash_sales)}</span>
+                      </div>
+                      {!isOpen && (
+                        <>
+                          <div>
+                            <span className="text-muted-foreground block">Expected</span>
+                            <span className="font-mono font-medium">{fmt(shift.expected_cash ?? 0)}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block">Actual</span>
+                            <span className="font-mono font-medium">{fmt(shift.end_balance ?? 0)}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-shrink-0 text-right">
+                    <p className="text-xs text-muted-foreground mb-1">Total Sales</p>
+                    <p className="font-bold text-base">{fmt(shift.total_sales)}</p>
+                    {!isOpen && (
+                      <div className={`mt-2 rounded-md px-2.5 py-1 text-xs font-semibold text-right ${isExact ? "bg-green-50 text-green-700" : isOver ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-700"}`}>
+                        <div className="flex items-center gap-1 justify-end">
+                          {isExact ? <CheckCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                          <span>{isExact ? "Balanced" : isOver ? "Over" : "Short"}</span>
+                        </div>
+                        <span className="font-mono">{disc >= 0 ? "+" : "-"}{fmt(Math.abs(disc))}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

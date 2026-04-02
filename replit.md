@@ -97,6 +97,38 @@ public/
 - QR code via `api.qrserver.com`
 - Footer: "Thank you for dining! Visit us again in Coron!"
 
+## Shift Management System
+
+### Database Table: `shifts`
+| Column | Type | Description |
+|---|---|---|
+| cashier_id | INT | References users.id |
+| cashier_name | VARCHAR | Display name |
+| cashier_username | VARCHAR | Login username |
+| start_time | TIMESTAMP | When shift began |
+| end_time | TIMESTAMP | When shift ended (null if open) |
+| start_balance | DECIMAL | Cash in drawer at start |
+| end_balance | DECIMAL | Cash counted at end |
+| total_cash_sales | DECIMAL | Cash sales during shift |
+| total_sales | DECIMAL | All sales during shift |
+| expected_cash | DECIMAL | start_balance + total_cash_sales |
+| discrepancy | DECIMAL | end_balance - expected_cash |
+| status | VARCHAR | 'open' or 'closed' |
+
+### API Routes
+- `GET /api/shifts/current` — Get logged-in user's open shift for today
+- `PATCH /api/shifts/current` — Close current shift (body: `{endBalance}`)
+- `POST /api/shifts` — Start a new shift (body: `{startBalance}`)
+- `GET /api/shifts?date=YYYY-MM-DD` — Admin: get all shifts for a date
+
+### Key Behaviors
+- Cashiers MUST enter starting cash balance when logging in (no open shift → Start Shift modal blocks POS)
+- Admins skip the mandatory shift modal
+- Close Shift: shows expected vs actual cash, calculates discrepancy (overage/shortage)
+- After closing, prints a Shift Summary receipt (printable on XPrinter/thermal)
+- Admin Dashboard "Shift History" tab shows all cashier shifts for selected date
+- Login redirect: `window.location.href = "/"` (hard redirect, no stale session issue)
+
 ## Development Notes
 - Next.js dev mode compiles pages lazily on first request
 - `next.config.mjs` adds `Cache-Control: no-store` for `/_next/*` in dev to prevent stale asset caching

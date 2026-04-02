@@ -34,16 +34,21 @@ import {
   BarChart2,
   LogOut,
   User,
+  Clock,
+  DoorOpen,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { useProducts } from "../context/product-context"
+import type { Shift } from "@/hooks/use-shift"
 
 interface CategorySidebarProps {
   selectedCategory: string
   onSelectCategory: (category: string) => void
+  shift?: Shift | null
+  onCloseShift?: () => void
 }
 
 const categoryIcons: Record<string, React.ElementType> = {
@@ -68,7 +73,12 @@ const categoryIcons: Record<string, React.ElementType> = {
   "beer-buckets": PartyPopper,
 }
 
-export default function CategorySidebar({ selectedCategory, onSelectCategory }: CategorySidebarProps) {
+export default function CategorySidebar({
+  selectedCategory,
+  onSelectCategory,
+  shift,
+  onCloseShift,
+}: CategorySidebarProps) {
   const router = useRouter()
   const { data: session } = useSession()
   const { categories, isEditMode, toggleEditMode, addCategory, updateCategory, deleteCategory, products } = useProducts()
@@ -79,6 +89,14 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
 
   const isAdmin = session?.user?.role === "admin"
   const userName = session?.user?.name ?? "Staff"
+
+  const shiftStartTime = shift
+    ? new Date(shift.start_time).toLocaleTimeString("en-PH", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      })
+    : null
 
   const handleAddCategory = () => {
     if (newCategoryName.trim()) {
@@ -106,9 +124,7 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
     }
     if (confirm("Are you sure you want to delete this category?")) {
       deleteCategory(id)
-      if (selectedCategory === id) {
-        onSelectCategory("all")
-      }
+      if (selectedCategory === id) onSelectCategory("all")
     }
   }
 
@@ -139,6 +155,14 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
             </Badge>
           </div>
         </div>
+
+        {/* Shift info */}
+        {shift && shiftStartTime && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-green-600 font-medium">
+            <Clock className="h-3 w-3" />
+            <span>Shift since {shiftStartTime}</span>
+          </div>
+        )}
       </div>
 
       {/* Header */}
@@ -164,9 +188,9 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
         )}
       </div>
 
-      {/* Admin Dashboard button */}
-      {isAdmin && (
-        <div className="px-3 pt-2">
+      {/* Admin Dashboard + Close Shift buttons */}
+      <div className="px-3 pt-2 space-y-1.5">
+        {isAdmin && (
           <Button
             variant="outline"
             size="sm"
@@ -176,8 +200,19 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
             <BarChart2 className="h-3.5 w-3.5" />
             Admin Dashboard
           </Button>
-        </div>
-      )}
+        )}
+        {shift && onCloseShift && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start text-xs gap-2 h-8 text-orange-700 border-orange-300 hover:bg-orange-50 hover:text-orange-800"
+            onClick={onCloseShift}
+          >
+            <DoorOpen className="h-3.5 w-3.5" />
+            Close Shift
+          </Button>
+        )}
+      </div>
 
       {/* Categories list */}
       <div className="flex-1 overflow-y-auto scrollbar-hide p-3">
@@ -319,7 +354,7 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
         </div>
       </div>
 
-      {/* Logout */}
+      {/* Sign Out */}
       <div className="p-3 border-t">
         <Button
           variant="ghost"
