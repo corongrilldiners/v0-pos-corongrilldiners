@@ -1,91 +1,104 @@
-# Coron Grill Diners - POS System
+# Coron Grill Diners — POS System
 
-A production-ready point-of-sale (POS) web application for Coron Grill Diners restaurant, backed by Replit PostgreSQL.
+## Project Overview
+Production-ready Next.js 15 Point-of-Sale application for **Coron Grill Diners** restaurant. Migrated from Vercel to Replit with a full PostgreSQL backend, offline-first PWA support, and multi-user login with RBAC.
 
 ## Tech Stack
-
 - **Framework**: Next.js 15 (App Router)
-- **UI**: Tailwind CSS + shadcn/ui (Radix UI components)
-- **Database**: Replit PostgreSQL via `pg`
-- **Package Manager**: pnpm
 - **Language**: TypeScript
+- **Styling**: Tailwind CSS + shadcn/ui
+- **Database**: Replit PostgreSQL (via `pg` pool)
+- **Auth**: next-auth v4 (JWT strategy, Credentials provider)
+- **Package Manager**: pnpm
+- **Port**: 5000, Host: 0.0.0.0
 
-## Project Structure
+## Architecture
 
+### Database Tables
+- **`products`** — 99 seeded menu items with category, price, image
+- **`sales`** — order records: items JSON, totals, payment method, server name, `created_by`
+- **`users`** — staff accounts with bcrypt-hashed passwords and role (cashier/admin)
+
+### Authentication & RBAC
+- Endpoint: `/login` — credentials form (username + password)
+- Session: JWT stored in cookie (30-day expiry)
+- Middleware (`middleware.ts`) protects all routes except `/login` and `/api/auth/*`
+- Roles:
+  - **cashier** — POS access only, no edit mode, no admin dashboard
+  - **admin** — full access: edit mode toggle (Settings button), Admin Dashboard link, product/category management
+
+### Staff Accounts
+| Username | Password | Role |
+|---|---|---|
+| cashier1 | cashier1 | Cashier |
+| cashier2 | cashier2 | Cashier |
+| cashier3 | cashier3 | Cashier |
+| cashier4 | cashier4 | Cashier |
+| admin | admin123 | Admin |
+
+### Key Files
 ```
 app/
-  page.tsx              - Main POS page
-  layout.tsx            - Root layout with providers
-  checkout/page.tsx     - Checkout with 1s cart sync spinner + DB sales recording
-  success/page.tsx      - Order success page
-  admin/page.tsx        - Admin dashboard (daily sales & orders from DB)
-  components/
-    cart-sidebar.tsx    - Cart sidebar with checkout button
-    product-grid.tsx    - Product grid
-    category-sidebar.tsx - Category filter sidebar
-    thermal-receipt.tsx - 80mm thermal receipt with QR code
+  layout.tsx          — Root layout with SessionProvider, PWA meta, SwRegister
+  page.tsx            — Main POS page
+  login/page.tsx      — Login form (next-auth signIn)
+  admin/page.tsx      — Admin dashboard (role-gated, admin only)
+  checkout/page.tsx   — Checkout flow with session-aware server name + offline fallback
+  providers.tsx       — SessionProvider wrapper
   context/
-    cart-context.tsx    - Cart state (localStorage)
-    product-context.tsx - Product state (localStorage fallback)
-  data/
-    products.tsx        - Legacy static data (DB is source of truth)
-  api/
-    products/route.ts   - GET /api/products — fetches from DB
-    sales/route.ts      - POST /api/sales (record sale), GET (admin stats)
-components/ui/          - shadcn/ui component library
+    cart-context.tsx
+    product-context.tsx
+  components/
+    category-sidebar.tsx  — RBAC: user info, Settings toggle (admin), Admin link, logout
+    product-grid.tsx      — "Add Product" only shows in admin edit mode
+    thermal-receipt.tsx   — 80mm thermal receipt with QR code
+    sw-register.tsx       — Service Worker registration + offline banner + offline sync
+
 lib/
-  db.ts                 - PostgreSQL pool (pg)
-  supabase/             - Stubbed out (replaced by lib/db.ts)
-  utils.ts              - Utility functions
-hooks/                  - Custom React hooks
-styles/                 - Global styles
+  auth.ts    — NextAuthOptions (CredentialsProvider + JWT/session callbacks)
+  db.ts      — pg Pool connection via DATABASE_URL
+
+middleware.ts   — withAuth() protects all non-public routes
+
+types/
+  next-auth.d.ts  — Session/JWT type augmentation (role, id fields)
+
+hooks/
+  use-offline-sync.ts  — Queue failed POST /api/sales to localStorage, drain on reconnect
+
+app/api/
+  auth/[...nextauth]/route.ts  — NextAuth handler
+  products/route.ts            — GET products (filtered by category), POST/PUT/DELETE
+  sales/route.ts               — POST (record sale + created_by), GET (daily stats)
+
+public/
+  manifest.json   — PWA manifest
+  sw.js           — Service Worker (network-first HTML, cache static assets, offline API fallback)
+  offline.html    — Offline fallback page
 ```
 
-## Database Schema
+### Environment Variables
+- `DATABASE_URL` — Replit PostgreSQL connection string
+- `NEXTAUTH_SECRET` — Random 32-byte hex secret for JWT signing
+- `NEXTAUTH_URL` — Base URL of the app (set to Replit dev domain)
 
-### `products` table
-| Column      | Type           | Notes                  |
-|-------------|----------------|------------------------|
-| id          | SERIAL PK      | Matches static IDs     |
-| name        | VARCHAR(255)   |                        |
-| price       | DECIMAL(10,2)  |                        |
-| image       | TEXT           | Unsplash URLs          |
-| category    | VARCHAR(100)   |                        |
-| description | TEXT           | Optional               |
-| created_at  | TIMESTAMP      |                        |
+## PWA / Offline
+- Service Worker (`/sw.js`) registered on first load
+- HTML pages: always network-first (never cached, to avoid stale asset version issues)
+- Static assets (images, fonts): cache-first
+- API calls: network-first with offline JSON fallback
+- Failed POST /api/sales → saved to localStorage, synced when back online
+- Offline banner: shown when `navigator.onLine === false`
 
-### `sales` table
-| Column          | Type          | Notes                        |
-|-----------------|---------------|------------------------------|
-| id              | SERIAL PK     |                              |
-| order_number    | VARCHAR(50)   | Format: #CGD-XXXX            |
-| items           | JSONB         | Array of cart items          |
-| subtotal        | DECIMAL(10,2) |                              |
-| service_charge  | DECIMAL(10,2) |                              |
-| grand_total     | DECIMAL(10,2) |                              |
-| payment_method  | VARCHAR(50)   | cash / card / gcash          |
-| amount_tendered | DECIMAL(10,2) |                              |
-| change_amount   | DECIMAL(10,2) |                              |
-| server_name     | VARCHAR(100)  |                              |
-| created_at      | TIMESTAMP     | Used for daily filtering     |
+## Receipt Format
+- 80mm thermal paper (CSS media query)
+- Restaurant: Coron Grill Diners
+- Address: Beside Panda House, 1 Don Pedro St, Barangay Poblacion, Coron
+- QR code via `api.qrserver.com`
+- Footer: "Thank you for dining! Visit us again in Coron!"
 
-## Running the App
-
-```bash
-pnpm run dev    # Development server on port 5000
-pnpm run build  # Production build
-pnpm run start  # Production server on port 5000
-```
-
-## Key Features
-
-- **99 menu items** seeded into PostgreSQL across 18 categories
-- **Cart race condition fix**: 1-second spinner on checkout page ensures localStorage syncs before rendering
-- **Live sales recording**: Every completed order (Confirm & Print or Digital Only) saves to the `sales` table
-- **Thermal receipt**: 80mm format, proper header/address, real QR code, updated footer
-- **Admin dashboard** at `/admin`: Total daily sales, total orders, avg order value, payment breakdown, recent orders list — with date picker
-
-## Environment Variables
-
-- `DATABASE_URL` — Set automatically by Replit PostgreSQL
-- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE` — Set automatically
+## Development Notes
+- Next.js dev mode compiles pages lazily on first request
+- `next.config.mjs` adds `Cache-Control: no-store` for `/_next/*` in dev to prevent stale asset caching
+- Service worker cache name: `cgd-pos-v2` — increment when making breaking SW changes
+- bcrypt hash rounds: 10

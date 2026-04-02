@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { ArrowLeft, CreditCard, Wallet, Printer, FileText, Loader2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { useCart } from "../context/cart-context"
 import ThermalReceipt from "../components/thermal-receipt"
+import { savePendingSale } from "@/hooks/use-offline-sync"
 
 function generateOrderNumber() {
   const random = Math.floor(1000 + Math.random() * 9000)
@@ -40,6 +42,7 @@ function formatDateTime() {
 
 export default function CheckoutPage() {
   const router = useRouter()
+  const { data: session } = useSession()
   const { cart, cartTotal, clearCart } = useCart()
   const [paymentMethod, setPaymentMethod] = useState("cash")
   const [includeServiceCharge, setIncludeServiceCharge] = useState(false)
@@ -54,20 +57,25 @@ export default function CheckoutPage() {
   const [cartTotalSnapshot, setCartTotalSnapshot] = useState(0)
   const receiptRef = useRef<HTMLDivElement>(null)
 
-  // 1-second spinner to ensure cart state is fully synced before showing checkout
+  // Pre-fill server name from session
+  useEffect(() => {
+    if (session?.user?.name) {
+      setServerName(session.user.name)
+    }
+  }, [session])
+
+  // 1-second spinner to ensure cart state is fully synced
   useEffect(() => {
     const timer = setTimeout(() => {
       setCartSnapshot([...cart])
       setCartTotalSnapshot(cartTotal)
       setIsLoading(false)
     }, 1000)
-
     return () => clearTimeout(timer)
   }, [cart, cartTotal])
 
   const serviceCharge = includeServiceCharge ? cartTotalSnapshot * 0.05 : 0
   const grandTotal = cartTotalSnapshot + serviceCharge
-
   const tenderedAmount = parseFloat(amountTendered) || 0
   const change = tenderedAmount >= grandTotal ? tenderedAmount - grandTotal : 0
 
@@ -79,30 +87,36 @@ export default function CheckoutPage() {
     setShowSummaryModal(true)
   }
 
+  const salePayload = () => ({
+    orderNumber,
+    items: cartSnapshot.map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: item.quantity,
+    })),
+    subtotal: cartTotalSnapshot,
+    serviceCharge,
+    grandTotal,
+    paymentMethod,
+    amountTendered: tenderedAmount,
+    changeAmount: change,
+    serverName,
+    createdBy: session?.user?.name ?? serverName,
+  })
+
   const recordSale = async () => {
+    const payload = salePayload()
     try {
-      await fetch("/api/sales", {
+      const res = await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderNumber,
-          items: cartSnapshot.map((item) => ({
-            id: item.id,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-          })),
-          subtotal: cartTotalSnapshot,
-          serviceCharge,
-          grandTotal,
-          paymentMethod,
-          amountTendered: tenderedAmount,
-          changeAmount: change,
-          serverName,
-        }),
+        body: JSON.stringify(payload),
       })
-    } catch (err) {
-      console.error("Failed to record sale:", err)
+      if (!res.ok) throw new Error("Server error")
+    } catch {
+      savePendingSale(payload)
+      console.warn("[CGD POS] Sale saved offline – will sync when online")
     }
   }
 
@@ -139,12 +153,8 @@ export default function CheckoutPage() {
       <div className="flex h-screen items-center justify-center print:hidden">
         <div className="text-center">
           <h1 className="text-2xl font-bold">Your cart is empty</h1>
-          <p className="mt-2 text-muted-foreground">
-            Add some items to your cart before checkout
-          </p>
-          <Button className="mt-4" onClick={() => router.push("/")}>
-            Return to POS
-          </Button>
+          <p className="mt-2 text-muted-foreground">Add some items to your cart before checkout</p>
+          <Button className="mt-4" onClick={() => router.push("/")}>Return to POS</Button>
         </div>
       </div>
     )
@@ -152,7 +162,6 @@ export default function CheckoutPage() {
 
   return (
     <>
-      {/* Main Checkout UI - Hidden when printing */}
       <div className="container mx-auto max-w-4xl py-8 print:hidden">
         <Button variant="ghost" className="mb-6" onClick={() => router.push("/")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -169,13 +178,9 @@ export default function CheckoutPage() {
                 <div key={item.id} className="mb-3 flex justify-between">
                   <div className="flex-1 pr-4">
                     <p className="font-medium">{item.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      ₱{item.price.toFixed(2)} x {item.quantity}
-                    </p>
+                    <p className="text-sm text-muted-foreground">₱{item.price.toFixed(2)} x {item.quantity}</p>
                   </div>
-                  <p className="font-medium flex-shrink-0">
-                    ₱{(item.price * item.quantity).toFixed(2)}
-                  </p>
+                  <p className="font-medium flex-shrink-0">₱{(item.price * item.quantity).toFixed(2)}</p>
                 </div>
               ))}
 
@@ -186,27 +191,20 @@ export default function CheckoutPage() {
                   <p>Subtotal</p>
                   <p>₱{cartTotalSnapshot.toFixed(2)}</p>
                 </div>
-
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="serviceCharge"
                     checked={includeServiceCharge}
-                    onCheckedChange={(checked) =>
-                      setIncludeServiceCharge(checked as boolean)
-                    }
+                    onCheckedChange={(checked) => setIncludeServiceCharge(checked as boolean)}
                   />
-                  <Label htmlFor="serviceCharge" className="text-sm">
-                    Add Service Charge (5%)
-                  </Label>
+                  <Label htmlFor="serviceCharge" className="text-sm">Add Service Charge (5%)</Label>
                 </div>
-
                 {includeServiceCharge && (
                   <div className="flex justify-between text-muted-foreground">
                     <p>Service Charge (5%)</p>
                     <p>₱{serviceCharge.toFixed(2)}</p>
                   </div>
                 )}
-
                 <div className="flex justify-between font-bold text-lg border-t pt-2">
                   <p>Grand Total</p>
                   <p>₱{grandTotal.toFixed(2)}</p>
@@ -219,9 +217,7 @@ export default function CheckoutPage() {
             <h2 className="mb-4 text-xl font-semibold">Payment Details</h2>
             <div className="rounded-lg border p-4 bg-white space-y-4">
               <div>
-                <Label htmlFor="serverName" className="text-sm font-medium">
-                  Server Name
-                </Label>
+                <Label htmlFor="serverName" className="text-sm font-medium">Server Name</Label>
                 <Input
                   id="serverName"
                   value={serverName}
@@ -233,27 +229,19 @@ export default function CheckoutPage() {
 
               <div>
                 <Label className="text-sm font-medium">Payment Method</Label>
-                <RadioGroup
-                  value={paymentMethod}
-                  onValueChange={setPaymentMethod}
-                  className="mt-2"
-                >
+                <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="mt-2">
                   <div className="flex items-center space-x-2 rounded-md border p-3">
                     <RadioGroupItem value="cash" id="cash" />
                     <Label htmlFor="cash" className="flex items-center cursor-pointer">
-                      <Wallet className="mr-2 h-4 w-4" />
-                      Cash
+                      <Wallet className="mr-2 h-4 w-4" />Cash
                     </Label>
                   </div>
-
                   <div className="mt-2 flex items-center space-x-2 rounded-md border p-3">
                     <RadioGroupItem value="card" id="card" />
                     <Label htmlFor="card" className="flex items-center cursor-pointer">
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      Credit/Debit Card
+                      <CreditCard className="mr-2 h-4 w-4" />Credit/Debit Card
                     </Label>
                   </div>
-
                   <div className="mt-2 flex items-center space-x-2 rounded-md border p-3">
                     <RadioGroupItem value="gcash" id="gcash" />
                     <Label htmlFor="gcash" className="flex items-center cursor-pointer">
@@ -268,9 +256,7 @@ export default function CheckoutPage() {
 
               {paymentMethod === "cash" && (
                 <div>
-                  <Label htmlFor="amountTendered" className="text-sm font-medium">
-                    Amount Tendered
-                  </Label>
+                  <Label htmlFor="amountTendered" className="text-sm font-medium">Amount Tendered</Label>
                   <Input
                     id="amountTendered"
                     type="number"
@@ -301,14 +287,11 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {/* Summary Modal with Print Button */}
       <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
         <DialogContent className="max-w-lg print:hidden">
           <DialogHeader>
             <DialogTitle>Order Confirmation</DialogTitle>
-            <DialogDescription>
-              Review the order details before finalizing.
-            </DialogDescription>
+            <DialogDescription>Review the order details before finalizing.</DialogDescription>
           </DialogHeader>
 
           <div className="max-h-[60vh] overflow-auto border rounded-lg">
@@ -328,20 +311,11 @@ export default function CheckoutPage() {
           </div>
 
           <div className="flex gap-3 mt-4">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={handleDigitalOnly}
-              disabled={isSaving}
-            >
+            <Button variant="outline" className="flex-1" onClick={handleDigitalOnly} disabled={isSaving}>
               <FileText className="mr-2 h-4 w-4" />
               Digital Record Only
             </Button>
-            <Button
-              className="flex-1 bg-primary"
-              onClick={handleConfirmAndPrint}
-              disabled={isSaving}
-            >
+            <Button className="flex-1 bg-primary" onClick={handleConfirmAndPrint} disabled={isSaving}>
               {isSaving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -353,7 +327,6 @@ export default function CheckoutPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Printable Receipt - Only visible when printing */}
       <div className="hidden print:block">
         <ThermalReceipt
           ref={receiptRef}

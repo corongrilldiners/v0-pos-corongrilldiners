@@ -14,12 +14,13 @@ export async function POST(request: Request) {
       amountTendered,
       changeAmount,
       serverName,
+      createdBy,
     } = body
 
     const result = await pool.query(
       `INSERT INTO sales
-        (order_number, items, subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        (order_number, items, subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id, order_number, grand_total, created_at`,
       [
         orderNumber,
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
         amountTendered,
         changeAmount,
         serverName,
+        createdBy ?? serverName,
       ]
     )
 
@@ -79,6 +81,7 @@ export async function GET(request: Request) {
          grand_total::float,
          payment_method,
          server_name,
+         created_by,
          created_at
        FROM sales
        WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1

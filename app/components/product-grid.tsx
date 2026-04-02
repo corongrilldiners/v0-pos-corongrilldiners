@@ -57,8 +57,8 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
   return (
     <>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {/* Add New Product Button - Only visible in Edit Mode or at the top of All Products */}
-        {(isEditMode || category === "all") && (
+        {/* Add New Product Button - Only visible in Admin Edit Mode */}
+        {isEditMode && (
           <Card
             className="overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer border-2 border-dashed border-primary/50 bg-primary/5 min-h-[200px] flex items-center justify-center"
             onClick={handleAddProduct}

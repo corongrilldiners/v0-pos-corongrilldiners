@@ -2,6 +2,8 @@
 
 import type React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { useSession, signOut } from "next-auth/react"
 
 import {
   LayoutGrid,
@@ -29,6 +31,9 @@ import {
   Trash2,
   X,
   Check,
+  BarChart2,
+  LogOut,
+  User,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -64,11 +69,16 @@ const categoryIcons: Record<string, React.ElementType> = {
 }
 
 export default function CategorySidebar({ selectedCategory, onSelectCategory }: CategorySidebarProps) {
+  const router = useRouter()
+  const { data: session } = useSession()
   const { categories, isEditMode, toggleEditMode, addCategory, updateCategory, deleteCategory, products } = useProducts()
   const [isAddingCategory, setIsAddingCategory] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState("")
+
+  const isAdmin = session?.user?.role === "admin"
+  const userName = session?.user?.name ?? "Staff"
 
   const handleAddCategory = () => {
     if (newCategoryName.trim()) {
@@ -113,28 +123,65 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
 
   return (
     <div className="w-56 border-r bg-background flex flex-col h-full">
+      {/* User Info */}
+      <div className="px-4 py-3 border-b bg-muted/30">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <User className="h-4 w-4 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold truncate">{userName}</p>
+            <Badge
+              variant={isAdmin ? "default" : "secondary"}
+              className="text-[10px] px-1.5 py-0 h-4"
+            >
+              {isAdmin ? "Admin" : "Cashier"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+
+      {/* Header */}
       <div className="p-4 pb-2 border-b">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Categories</h2>
-          <Button
-            variant={isEditMode ? "default" : "ghost"}
-            size="icon"
-            className="h-8 w-8"
-            onClick={toggleEditMode}
-            title={isEditMode ? "Exit Edit Mode" : "Manage Menu"}
-          >
-            <Settings className={cn("h-4 w-4", isEditMode && "animate-spin")} />
-          </Button>
+          {isAdmin && (
+            <Button
+              variant={isEditMode ? "default" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={toggleEditMode}
+              title={isEditMode ? "Exit Edit Mode" : "Manage Menu"}
+            >
+              <Settings className={cn("h-4 w-4", isEditMode && "animate-spin")} />
+            </Button>
+          )}
         </div>
-        {isEditMode && (
+        {isEditMode && isAdmin && (
           <Badge variant="secondary" className="mt-2 w-full justify-center text-xs">
             Edit Mode Active
           </Badge>
         )}
       </div>
+
+      {/* Admin Dashboard button */}
+      {isAdmin && (
+        <div className="px-3 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full justify-start text-xs gap-2 h-8"
+            onClick={() => router.push("/admin")}
+          >
+            <BarChart2 className="h-3.5 w-3.5" />
+            Admin Dashboard
+          </Button>
+        </div>
+      )}
+
+      {/* Categories list */}
       <div className="flex-1 overflow-y-auto scrollbar-hide p-3">
         <div className="grid gap-2">
-          {/* All Products Button */}
           <Button
             variant="ghost"
             className={cn(
@@ -151,13 +198,12 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
             <span className="text-[10px] text-muted-foreground">({getProductCount("all")})</span>
           </Button>
 
-          {/* Category Buttons */}
           {categories.map((category) => {
             const Icon = categoryIcons[category.id] || Package
             const isActive = selectedCategory === category.id
             const isEditing = editingCategoryId === category.id
             const isPromo = isPromoCategory(category.id)
-            
+
             return (
               <div key={category.id} className="relative">
                 {isEditing ? (
@@ -208,8 +254,7 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
                   </Button>
                 )}
 
-                {/* Edit/Delete buttons in Edit Mode */}
-                {isEditMode && !isEditing && (
+                {isEditMode && isAdmin && !isEditing && (
                   <div className="absolute -top-1 -right-1 flex gap-0.5">
                     <Button
                       size="icon"
@@ -237,8 +282,7 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
             )
           })}
 
-          {/* Add Category Button (only in Edit Mode) */}
-          {isEditMode && (
+          {isEditMode && isAdmin && (
             <>
               {isAddingCategory ? (
                 <div className="flex items-center gap-1 p-2 border border-dashed rounded-md">
@@ -273,6 +317,19 @@ export default function CategorySidebar({ selectedCategory, onSelectCategory }: 
             </>
           )}
         </div>
+      </div>
+
+      {/* Logout */}
+      <div className="p-3 border-t">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-xs gap-2 h-8 text-muted-foreground hover:text-red-600 hover:bg-red-50"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+        >
+          <LogOut className="h-3.5 w-3.5" />
+          Sign Out
+        </Button>
       </div>
     </div>
   )

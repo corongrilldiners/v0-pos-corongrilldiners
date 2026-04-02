@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, RefreshCw, ShoppingBag, TrendingUp, Wallet, CreditCard } from "lucide-react"
+import { useSession } from "next-auth/react"
+import { ArrowLeft, RefreshCw, ShoppingBag, TrendingUp, Wallet, CreditCard, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 
@@ -28,6 +29,7 @@ interface RecentOrder {
   grand_total: number
   payment_method: string
   server_name: string
+  created_by: string
   created_at: string
 }
 
@@ -62,11 +64,14 @@ function paymentIcon(method: string) {
 
 export default function AdminPage() {
   const router = useRouter()
+  const { data: session, status } = useSession()
   const [data, setData] = useState<SalesData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState(
     new Date().toLocaleDateString("en-CA")
   )
+
+  const isAdmin = session?.user?.role === "admin"
 
   const fetchData = async (date: string) => {
     setIsLoading(true)
@@ -82,13 +87,35 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    fetchData(selectedDate)
-  }, [selectedDate])
+    if (status === "authenticated" && isAdmin) {
+      fetchData(selectedDate)
+    }
+  }, [selectedDate, status, isAdmin])
+
+  if (status === "loading") {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <Lock className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+          <h1 className="text-2xl font-bold">Access Denied</h1>
+          <p className="mt-2 text-muted-foreground">Admin access required.</p>
+          <Button className="mt-4" onClick={() => router.push("/")}>Back to POS</Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto max-w-5xl py-8 px-4">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => router.push("/")}>
@@ -123,16 +150,13 @@ export default function AdminPage() {
           </div>
         ) : data ? (
           <>
-            {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
               <div className="bg-white rounded-xl border p-5 shadow-sm">
                 <div className="flex items-center gap-2 text-muted-foreground mb-1">
                   <TrendingUp className="h-4 w-4" />
                   <span className="text-sm font-medium">Total Daily Sales</span>
                 </div>
-                <p className="text-3xl font-bold text-green-600">
-                  {formatCurrency(data.stats.total_sales)}
-                </p>
+                <p className="text-3xl font-bold text-green-600">{formatCurrency(data.stats.total_sales)}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {selectedDate === new Date().toLocaleDateString("en-CA") ? "Today" : selectedDate}
                 </p>
@@ -163,7 +187,6 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Payment Breakdown */}
             {data.paymentBreakdown.length > 0 && (
               <div className="bg-white rounded-xl border p-5 shadow-sm mb-6">
                 <h2 className="font-semibold mb-3">Payment Method Breakdown</h2>
@@ -181,7 +204,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* Recent Orders */}
             <div className="bg-white rounded-xl border shadow-sm">
               <div className="p-5 border-b">
                 <h2 className="font-semibold">Recent Orders</h2>
@@ -197,7 +219,7 @@ export default function AdminPage() {
                     <div key={order.id} className="p-4 hover:bg-gray-50 transition-colors">
                       <div className="flex items-start justify-between">
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-mono font-bold text-sm">{order.order_number}</span>
                             <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full capitalize">
                               {paymentIcon(order.payment_method)}
@@ -205,7 +227,7 @@ export default function AdminPage() {
                             </span>
                           </div>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {formatTime(order.created_at)} · {order.server_name}
+                            {formatTime(order.created_at)} · Served by: <span className="font-medium">{order.created_by || order.server_name}</span>
                           </p>
                           <div className="mt-2 text-xs text-gray-600 space-y-0.5">
                             {order.items.map((item, i) => (
