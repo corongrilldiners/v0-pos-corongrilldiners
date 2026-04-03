@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { signIn, useSession } from "next-auth/react"
-import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { Loader2, LogIn } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -10,18 +9,19 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export default function LoginPage() {
-  const router = useRouter()
   const { data: session, status } = useSession()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
+  // If already authenticated, send to correct dashboard immediately
   useEffect(() => {
-    if (status === "authenticated") {
-      router.replace("/")
+    if (status === "authenticated" && session?.user) {
+      const dest = session.user.role === "admin" ? "/admin" : "/"
+      window.location.replace(dest)
     }
-  }, [status, router])
+  }, [status, session])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,14 +38,15 @@ export default function LoginPage() {
       setIsLoading(false)
       setError("Invalid username or password. Please try again.")
     } else {
-      // Hard redirect ensures session cookie is picked up instantly
+      // Hard redirect to root — middleware reads the session token and routes
+      // admin → /admin, cashier → / (POS register)
       window.location.href = "/"
     }
   }
 
-  if (status === "authenticated") {
+  if (status === "loading" || status === "authenticated") {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="flex h-screen items-center justify-center bg-gray-100">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     )

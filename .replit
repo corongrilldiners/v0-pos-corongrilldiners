@@ -38,4 +38,3 @@ externalPort = 80
 
 [userenv.shared]
 NEXTAUTH_SECRET = "1dc30faee029c71e9562a63d7a34820affa58e28451c6e23eb9879b679338999"
-NEXTAUTH_URL = "https://a3ee3519-7fb0-4791-9e32-6aa961f389e5-00-2bqlvt48uke6g.spock.replit.dev"
