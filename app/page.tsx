@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { Search } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { Search, Loader2 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { Input } from "@/components/ui/input"
 import ProductGrid from "./components/product-grid"
@@ -14,7 +15,8 @@ import { useShift } from "@/hooks/use-shift"
 export default function POSPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const router = useRouter()
 
   const {
     shift,
@@ -25,6 +27,21 @@ export default function POSPage() {
     startShift,
     closeShift,
   } = useShift()
+
+  useEffect(() => {
+    if (status === "authenticated" && session?.user?.role === "admin") {
+      router.replace("/admin")
+    }
+  }, [status, session, router])
+
+  // Show a spinner while session is loading or while redirecting admin
+  if (status === "loading" || (status === "authenticated" && session?.user?.role === "admin")) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen bg-background">
