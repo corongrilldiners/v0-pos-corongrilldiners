@@ -6,7 +6,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 async function setup() {
   const client = await pool.connect();
   try {
-    console.log("Creating tables...");
+    console.log("Creating/fixing tables...");
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -28,6 +28,32 @@ async function setup() {
       )
     `);
 
+    // Drop and recreate sales table with correct column names
+    await client.query(`DROP TABLE IF EXISTS sales`);
+    await client.query(`
+      CREATE TABLE sales (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_number TEXT NOT NULL UNIQUE,
+        items JSONB NOT NULL,
+        subtotal DECIMAL(10, 2) NOT NULL,
+        service_charge DECIMAL(10, 2) DEFAULT 0,
+        grand_total DECIMAL(10, 2) NOT NULL,
+        payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'gcash', 'card')),
+        amount_tendered DECIMAL(10, 2) DEFAULT 0,
+        change_amount DECIMAL(10, 2) DEFAULT 0,
+        server_name TEXT,
+        created_by TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at DESC)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_sales_payment_method ON sales(payment_method)
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS products (
         id SERIAL PRIMARY KEY,
@@ -43,22 +69,36 @@ async function setup() {
     `);
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS sales (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        order_number TEXT NOT NULL UNIQUE,
-        items_json JSONB NOT NULL,
-        subtotal DECIMAL(10, 2) NOT NULL,
-        service_charge DECIMAL(10, 2) DEFAULT 0,
-        total_paid DECIMAL(10, 2) NOT NULL,
-        amount_tendered DECIMAL(10, 2) DEFAULT 0,
-        change_amount DECIMAL(10, 2) DEFAULT 0,
-        payment_method TEXT NOT NULL CHECK (payment_method IN ('cash', 'gcash', 'card')),
-        server_name TEXT,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)
+    `);
+
+    // Create shifts table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS shifts (
+        id SERIAL PRIMARY KEY,
+        cashier_id INTEGER NOT NULL REFERENCES users(id),
+        cashier_name TEXT NOT NULL,
+        cashier_username TEXT NOT NULL,
+        start_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        end_time TIMESTAMP WITH TIME ZONE,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+        start_balance DECIMAL(10, 2) NOT NULL DEFAULT 0,
+        end_balance DECIMAL(10, 2),
+        total_cash_sales DECIMAL(10, 2) DEFAULT 0,
+        total_sales DECIMAL(10, 2) DEFAULT 0,
+        expected_cash DECIMAL(10, 2),
+        discrepancy DECIMAL(10, 2)
       )
     `);
 
-    console.log("Tables created. Seeding users...");
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_shifts_cashier_id ON shifts(cashier_id)
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_shifts_start_time ON shifts(start_time DESC)
+    `);
+
+    console.log("Tables created/fixed. Seeding users...");
 
     const cashierHash = bcrypt.hashSync("cashier123", 10);
     const adminHash = bcrypt.hashSync("admin123", 10);
@@ -87,6 +127,13 @@ async function setup() {
     const result = await client.query("SELECT id, username, name, role FROM users ORDER BY id");
     console.log("\nUsers in database:");
     result.rows.forEach((r) => console.log(`  ${r.id}: ${r.username} / ${r.name} / ${r.role}`));
+
+    // Verify tables
+    const tables = await client.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`
+    );
+    console.log("\nTables:");
+    tables.rows.forEach((r) => console.log(`  ${r.table_name}`));
 
     console.log("\nDatabase setup complete!");
   } catch (err) {
