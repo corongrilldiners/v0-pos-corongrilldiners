@@ -1,13 +1,10 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter } from "next/font/google"
 import "./globals.css"
 import { CartProvider } from "./context/cart-context"
 import { ProductProvider } from "./context/product-context"
 import { Providers } from "./providers"
 import SwRegister from "./components/sw-register"
-
-const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Coron Grill Diners - POS System",
@@ -39,7 +36,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/apple-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
-      <body className={`${inter.className} bg-gray-100`}>
+      <body className="bg-gray-100" style={{ fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif" }}>
         <Providers>
           <ProductProvider>
             <CartProvider>
