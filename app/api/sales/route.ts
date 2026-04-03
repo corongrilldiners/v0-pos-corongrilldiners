@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     } = body
 
     const result = await pool.query(
-      `INSERT INTO sales
+      `INSERT INTO public.sales
         (order_number, items, subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id, order_number, grand_total, created_at`,
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
          COALESCE(SUM(grand_total), 0)::float AS total_sales,
          COALESCE(SUM(subtotal), 0)::float AS total_subtotal,
          COALESCE(SUM(service_charge), 0)::float AS total_service_charge
-       FROM sales
+       FROM public.sales
        WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1`,
       [date]
     )
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
          payment_method,
          COUNT(*)::int AS count,
          COALESCE(SUM(grand_total), 0)::float AS total
-       FROM sales
+       FROM public.sales
        WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1
        GROUP BY payment_method
        ORDER BY total DESC`,
@@ -83,7 +83,7 @@ export async function GET(request: Request) {
          server_name,
          created_by,
          created_at
-       FROM sales
+       FROM public.sales
        WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1
        ORDER BY created_at DESC
        LIMIT 20`,

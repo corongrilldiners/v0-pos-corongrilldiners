@@ -23,7 +23,7 @@ export async function POST(request: Request) {
          total_sales::float,
          expected_cash::float,
          discrepancy::float
-       FROM shifts
+       FROM public.shifts
        WHERE cashier_id = $1 AND status = 'open'
          AND DATE(start_time AT TIME ZONE 'Asia/Manila') = CURRENT_DATE AT TIME ZONE 'Asia/Manila'
        ORDER BY start_time DESC
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
     }
 
     const result = await pool.query(
-      `INSERT INTO shifts (cashier_id, cashier_name, cashier_username, start_balance, status)
+      `INSERT INTO public.shifts (cashier_id, cashier_name, cashier_username, start_balance, status)
        VALUES ($1, $2, $3, $4, 'open')
        RETURNING
          id, cashier_id, cashier_name, cashier_username,
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
          s.total_sales::float,
          s.expected_cash::float,
          s.discrepancy::float
-       FROM shifts s
+       FROM public.shifts s
        WHERE DATE(s.start_time AT TIME ZONE 'Asia/Manila') = $1
        ORDER BY s.start_time DESC
        LIMIT $2`,

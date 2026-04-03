@@ -6,7 +6,7 @@ import pool from "@/lib/db"
 export async function GET() {
   try {
     const result = await pool.query(
-      `SELECT id, name, display_order FROM categories ORDER BY display_order ASC, name ASC`
+      `SELECT id, name, display_order FROM public.categories ORDER BY display_order ASC, name ASC`
     )
     return NextResponse.json(result.rows)
   } catch (error) {
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   try {
     const { id, name, display_order } = await request.json()
     const result = await pool.query(
-      `INSERT INTO categories (id, name, display_order)
+      `INSERT INTO public.categories (id, name, display_order)
        VALUES ($1, $2, $3)
        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, display_order = EXCLUDED.display_order
        RETURNING id, name, display_order`,
@@ -44,7 +44,7 @@ export async function PUT(request: Request) {
   try {
     const { id, name, display_order } = await request.json()
     const result = await pool.query(
-      `UPDATE categories SET name = $1, display_order = COALESCE($2, display_order)
+      `UPDATE public.categories SET name = $1, display_order = COALESCE($2, display_order)
        WHERE id = $3
        RETURNING id, name, display_order`,
       [name, display_order, id]
@@ -67,7 +67,7 @@ export async function DELETE(request: Request) {
   try {
     const { id } = await request.json()
     const productCheck = await pool.query(
-      `SELECT COUNT(*) FROM products WHERE category = $1`, [id]
+      `SELECT COUNT(*) FROM public.products WHERE category = $1`, [id]
     )
     if (parseInt(productCheck.rows[0].count) > 0) {
       return NextResponse.json(
@@ -75,7 +75,7 @@ export async function DELETE(request: Request) {
         { status: 400 }
       )
     }
-    await pool.query("DELETE FROM categories WHERE id = $1", [id])
+    await pool.query("DELETE FROM public.categories WHERE id = $1", [id])
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Failed to delete category:", error)

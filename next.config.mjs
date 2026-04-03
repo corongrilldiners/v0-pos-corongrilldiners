@@ -1,8 +1,8 @@
 /** @type {import('next').NextConfig} */
 
-// Dynamically set NEXTAUTH_URL to the actual running domain so sign-in/sign-out
-// redirects work correctly regardless of which Replit domain is active.
-if (process.env.REPLIT_DEV_DOMAIN && !process.env.NEXTAUTH_URL) {
+// On Replit: always derive NEXTAUTH_URL from the live dev domain.
+// On Vercel: NEXTAUTH_URL must be set in Vercel's environment variables.
+if (process.env.REPLIT_DEV_DOMAIN) {
   process.env.NEXTAUTH_URL = `https://${process.env.REPLIT_DEV_DOMAIN}`
 }
 

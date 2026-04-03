@@ -11,7 +11,7 @@ export async function GET() {
 
   try {
     const result = await pool.query(
-      `SELECT id, username, name, role, created_at FROM users ORDER BY role DESC, name ASC`
+      `SELECT id, username, name, role, created_at FROM public.users ORDER BY role DESC, name ASC`
     )
     return NextResponse.json({ users: result.rows })
   } catch (error) {

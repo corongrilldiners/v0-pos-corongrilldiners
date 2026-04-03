@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const result = await pool.query(
       `SELECT id, name, price::float, category, image_url AS image, description, available
-       FROM products ORDER BY category, name ASC`
+       FROM public.products ORDER BY category, name ASC`
     )
     return NextResponse.json(result.rows)
   } catch (error) {
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   try {
     const { name, price, category, image, description, available } = await request.json()
     const result = await pool.query(
-      `INSERT INTO products (name, price, category, image_url, description, available)
+      `INSERT INTO public.products (name, price, category, image_url, description, available)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, name, price::float, category, image_url AS image, description, available`,
       [name, price, category, image || null, description || null, available ?? true]
@@ -46,7 +46,7 @@ export async function PUT(request: Request) {
   try {
     const { id, name, price, category, image, description, available } = await request.json()
     const result = await pool.query(
-      `UPDATE products
+      `UPDATE public.products
        SET name = $1, price = $2, category = $3, image_url = $4,
            description = $5, available = $6, updated_at = NOW()
        WHERE id = $7
@@ -71,7 +71,7 @@ export async function DELETE(request: Request) {
 
   try {
     const { id } = await request.json()
-    await pool.query("DELETE FROM products WHERE id = $1", [id])
+    await pool.query("DELETE FROM public.products WHERE id = $1", [id])
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Failed to delete product:", error)
