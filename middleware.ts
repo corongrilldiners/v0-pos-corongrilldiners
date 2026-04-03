@@ -11,7 +11,12 @@ export default withAuth(
       return NextResponse.redirect(new URL("/admin", req.url))
     }
 
-    // Block cashiers from accessing the admin-only POS and admin panel
+    // Block cashiers from accessing the admin dashboard
+    if (pathname.startsWith("/admin") && token?.role !== "admin") {
+      return NextResponse.redirect(new URL("/", req.url))
+    }
+
+    // Block cashiers from the admin-only POS management page
     if (pathname === "/pos" && token?.role !== "admin") {
       return NextResponse.redirect(new URL("/", req.url))
     }

@@ -32,6 +32,7 @@ export const authOptions: NextAuthOptions = {
           return {
             id: user.id.toString(),
             name: user.name,
+            username: user.username,
             role: user.role,
           }
         } catch (error) {
@@ -46,13 +47,15 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = (user as any).role
         token.id = user.id as string
+        token.username = (user as any).username
       }
       return token
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.role = token.role
-        session.user.id = token.id
+        session.user.id = token.id as string
+        ;(session.user as any).username = token.username
       }
       return session
     },
