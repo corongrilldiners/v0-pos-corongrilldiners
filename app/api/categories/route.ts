@@ -21,13 +21,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
   try {
-    const { name, display_order } = await request.json()
+    const { id, name, display_order } = await request.json()
     const result = await pool.query(
-      `INSERT INTO categories (name, display_order)
-       VALUES ($1, $2)
-       ON CONFLICT (name) DO UPDATE SET display_order = EXCLUDED.display_order
+      `INSERT INTO categories (id, name, display_order)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, display_order = EXCLUDED.display_order
        RETURNING id, name, display_order`,
-      [name, display_order ?? 0]
+      [id, name, display_order ?? 0]
     )
     return NextResponse.json({ category: result.rows[0] })
   } catch (error) {
@@ -66,13 +66,8 @@ export async function DELETE(request: Request) {
   }
   try {
     const { id } = await request.json()
-    const cat = await pool.query(`SELECT name FROM categories WHERE id = $1`, [id])
-    if (cat.rows.length === 0) {
-      return NextResponse.json({ error: "Category not found" }, { status: 404 })
-    }
-    const categoryName = cat.rows[0].name
     const productCheck = await pool.query(
-      `SELECT COUNT(*) FROM products WHERE category = $1`, [categoryName]
+      `SELECT COUNT(*) FROM products WHERE category = $1`, [id]
     )
     if (parseInt(productCheck.rows[0].count) > 0) {
       return NextResponse.json(
