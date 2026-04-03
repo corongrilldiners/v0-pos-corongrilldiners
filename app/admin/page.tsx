@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Clock, UtensilsCrossed, Users, ShoppingCart,
   LogOut, RefreshCw, TrendingUp, ShoppingBag, Wallet, CreditCard,
   CheckCircle, AlertTriangle, Lock, Plus, Pencil, Trash2,
-  Eye, EyeOff, ChevronRight, X, Save,
+  Eye, EyeOff, X, Save,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Image from "next/image"
+import { useProducts } from "../context/product-context"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,29 +48,6 @@ interface StaffUser {
   id: number; username: string; name: string; role: string; created_at: string
 }
 
-// ─── Categories ───────────────────────────────────────────────────────────────
-
-const CATEGORIES = [
-  { id: "main-course", name: "Main Course" },
-  { id: "appetizer", name: "Appetizer" },
-  { id: "pasta-noodles", name: "Pasta & Noodles" },
-  { id: "grill-diners-budget", name: "Grill Diners Budget" },
-  { id: "all-day-breakfast-silog", name: "All Day Breakfast Silog" },
-  { id: "combo-meals", name: "Combo Meal's (On Hot Plate)" },
-  { id: "special-set", name: "Special Set" },
-  { id: "snacks-burger-sub", name: "Snack's Burger & Sub" },
-  { id: "american-breakfast", name: "American Breakfast" },
-  { id: "continental-breakfast", name: "Continental Breakfast" },
-  { id: "side-order", name: "Side Order" },
-  { id: "sizzlers", name: "Sizzlers" },
-  { id: "salads", name: "Salads" },
-  { id: "desserts", name: "Desserts" },
-  { id: "shakes", name: "Shakes" },
-  { id: "beers", name: "Beers" },
-  { id: "drinks", name: "Drinks" },
-  { id: "beer-buckets", name: "Beer Buckets (w/ free Sizzling Bopis)" },
-]
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -82,9 +60,6 @@ function PaymentIcon({ method }: { method: string }) {
   if (method === "cash") return <Wallet className="h-3 w-3 inline mr-1" />
   if (method === "card") return <CreditCard className="h-3 w-3 inline mr-1" />
   return <span className="mr-1 text-[10px] font-bold">G</span>
-}
-function categoryName(id: string) {
-  return CATEGORIES.find((c) => c.id === id)?.name ?? id
 }
 
 // ─── Sidebar nav items ────────────────────────────────────────────────────────
@@ -106,7 +81,6 @@ export default function AdminPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString("en-CA"))
   const [salesData, setSalesData] = useState<SalesData | null>(null)
   const [shifts, setShifts] = useState<ShiftRecord[]>([])
-  const [products, setProducts] = useState<Product[]>([])
   const [staff, setStaff] = useState<StaffUser[]>([])
   const [isLoading, setIsLoading] = useState(false)
 
@@ -124,11 +98,6 @@ export default function AdminPage() {
     if (res.ok) { const j = await res.json(); setShifts(j.shifts ?? []) }
   }, [])
 
-  const fetchProducts = useCallback(async () => {
-    const res = await fetch("/api/products")
-    if (res.ok) setProducts(await res.json())
-  }, [])
-
   const fetchStaff = useCallback(async () => {
     const res = await fetch("/api/users")
     if (res.ok) { const j = await res.json(); setStaff(j.users ?? []) }
@@ -139,15 +108,14 @@ export default function AdminPage() {
     try {
       if (activeSection === "dashboard") await fetchSales(selectedDate)
       else if (activeSection === "shifts") await fetchShifts(selectedDate)
-      else if (activeSection === "menu") await fetchProducts()
       else if (activeSection === "staff") await fetchStaff()
     } finally {
       setIsLoading(false)
     }
-  }, [activeSection, selectedDate, fetchSales, fetchShifts, fetchProducts, fetchStaff])
+  }, [activeSection, selectedDate, fetchSales, fetchShifts, fetchStaff])
 
   useEffect(() => {
-    if (status === "authenticated" && isAdmin) refreshCurrent()
+    if (status === "authenticated" && isAdmin && activeSection !== "menu") refreshCurrent()
   }, [activeSection, selectedDate, status, isAdmin])
 
   // ── Auth guards ────────────────────────────────────────────────────────────
@@ -212,7 +180,6 @@ export default function AdminPage() {
           ))}
 
           <div className="pt-3 mt-3 border-t">
-            {/* Open POS button */}
             <button
               onClick={() => router.push("/pos")}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
@@ -258,15 +225,19 @@ export default function AdminPage() {
                 className="border rounded-md px-3 py-1.5 text-sm bg-white"
               />
             )}
-            <Button variant="outline" size="icon" onClick={refreshCurrent} disabled={isLoading}>
-              <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            </Button>
+            {activeSection !== "menu" && (
+              <Button variant="outline" size="icon" onClick={refreshCurrent} disabled={isLoading}>
+                <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+              </Button>
+            )}
           </div>
         </header>
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {isLoading ? (
+          {activeSection === "menu" ? (
+            <MenuSection />
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-32">
               <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -274,8 +245,6 @@ export default function AdminPage() {
             <DashboardSection data={salesData} selectedDate={selectedDate} />
           ) : activeSection === "shifts" ? (
             <ShiftsSection shifts={shifts} selectedDate={selectedDate} />
-          ) : activeSection === "menu" ? (
-            <MenuSection products={products} onRefresh={fetchProducts} />
           ) : (
             <StaffSection staff={staff} />
           )}
@@ -447,52 +416,52 @@ function ShiftsSection({ shifts, selectedDate }: { shifts: ShiftRecord[]; select
   )
 }
 
-// ─── Menu Management Section ──────────────────────────────────────────────────
+// ─── Menu Management Section (uses shared product context) ────────────────────
 
-function MenuSection({ products, onRefresh }: { products: Product[]; onRefresh: () => void }) {
+function MenuSection() {
+  const { products, categories, isLoading, addProduct, updateProduct, deleteProduct, refreshProducts } = useProducts()
   const [showModal, setShowModal] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [filterCat, setFilterCat] = useState("all")
   const [saving, setSaving] = useState(false)
 
   const filtered = filterCat === "all" ? products : products.filter((p) => p.category === filterCat)
+  const usedCats = Array.from(new Set(products.map((p) => p.category)))
+
+  const getCategoryName = (id: string) =>
+    categories.find((c) => c.id === id)?.name ?? id
 
   const handleToggleAvailability = async (product: Product) => {
-    await fetch("/api/products", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...product, available: !product.available }),
-    })
-    onRefresh()
+    await updateProduct(product.id, { available: !product.available })
   }
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this product? This cannot be undone.")) return
-    await fetch("/api/products", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    })
-    onRefresh()
+    await deleteProduct(id)
   }
 
   const handleSave = async (data: Omit<Product, "id"> & { id?: number }) => {
     setSaving(true)
     try {
-      await fetch("/api/products", {
-        method: data.id ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
+      if (data.id) {
+        await updateProduct(data.id, data)
+      } else {
+        await addProduct(data)
+      }
       setShowModal(false)
       setEditingProduct(null)
-      onRefresh()
     } finally {
       setSaving(false)
     }
   }
 
-  const usedCats = Array.from(new Set(products.map((p) => p.category)))
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <>
@@ -506,7 +475,7 @@ function MenuSection({ products, onRefresh }: { products: Product[]; onRefresh: 
             <option value="all">All Categories ({products.length})</option>
             {usedCats.map((c) => (
               <option key={c} value={c}>
-                {categoryName(c)} ({products.filter((p) => p.category === c).length})
+                {getCategoryName(c)} ({products.filter((p) => p.category === c).length})
               </option>
             ))}
           </select>
@@ -541,31 +510,27 @@ function MenuSection({ products, onRefresh }: { products: Product[]; onRefresh: 
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">{categoryName(product.category)}</p>
+                  <p className="text-xs text-muted-foreground">{getCategoryName(product.category)}</p>
                 </div>
                 <p className="font-semibold text-sm flex-shrink-0">{fmt(product.price)}</p>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
+                    size="icon" variant="ghost" className="h-8 w-8"
                     title={product.available ? "Mark Unavailable" : "Mark Available"}
                     onClick={() => handleToggleAvailability(product)}
                   >
-                    {product.available ? <Eye className="h-4 w-4 text-green-600" /> : <EyeOff className="h-4 w-4 text-gray-400" />}
+                    {product.available
+                      ? <Eye className="h-4 w-4 text-green-600" />
+                      : <EyeOff className="h-4 w-4 text-gray-400" />}
                   </Button>
                   <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    onClick={() => { setEditingProduct(product); setShowModal(true) }}
+                    size="icon" variant="ghost" className="h-8 w-8"
+                    onClick={() => { setEditingProduct(product as any); setShowModal(true) }}
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
                   <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    size="icon" variant="ghost" className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
                     onClick={() => handleDelete(product.id)}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -580,6 +545,7 @@ function MenuSection({ products, onRefresh }: { products: Product[]; onRefresh: 
       {showModal && (
         <ProductFormModal
           product={editingProduct}
+          categories={categories}
           saving={saving}
           onSave={handleSave}
           onClose={() => { setShowModal(false); setEditingProduct(null) }}
@@ -592,9 +558,10 @@ function MenuSection({ products, onRefresh }: { products: Product[]; onRefresh: 
 // ─── Product Form Modal ───────────────────────────────────────────────────────
 
 function ProductFormModal({
-  product, saving, onSave, onClose,
+  product, categories, saving, onSave, onClose,
 }: {
   product: Product | null
+  categories: { id: string; name: string }[]
   saving: boolean
   onSave: (data: any) => void
   onClose: () => void
@@ -637,7 +604,7 @@ function ProductFormModal({
             <Select value={category} onValueChange={setCategory} required>
               <SelectTrigger><SelectValue placeholder="Select a category" /></SelectTrigger>
               <SelectContent>
-                {CATEGORIES.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                {categories.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -703,7 +670,7 @@ function StaffSection({ staff }: { staff: StaffUser[] }) {
                 >
                   {user.role === "admin" ? "Admin" : "Cashier"}
                 </Badge>
-                <p className="text-xs text-muted-foreground hidden sm:block flex-shrink-0">
+                <p className="text-xs text-muted-foreground flex-shrink-0">
                   Since {new Date(user.created_at).toLocaleDateString("en-PH", { month: "short", year: "numeric" })}
                 </p>
               </div>
@@ -711,39 +678,36 @@ function StaffSection({ staff }: { staff: StaffUser[] }) {
           </div>
         )}
       </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
-        <p className="font-semibold mb-1">Account Passwords</p>
-        <p>All cashier accounts use the password set by the administrator. To change passwords, please update them directly in the database or contact your system administrator.</p>
-      </div>
     </div>
   )
 }
 
-// ─── Shared Components ────────────────────────────────────────────────────────
+// ─── Shared UI helpers ────────────────────────────────────────────────────────
 
 function StatCard({
-  icon: Icon, label, value, sub, valueClass = "",
+  icon: Icon, label, value, sub, valueClass,
 }: {
-  icon: React.ElementType; label: string; value: string; sub: string; valueClass?: string
+  icon: React.ElementType; label: string; value: string; sub?: string; valueClass?: string
 }) {
   return (
     <div className="bg-white rounded-xl border p-5 shadow-sm">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-        <Icon className="h-4 w-4" />
-        <span className="text-sm font-medium">{label}</span>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+          <Icon className="h-4 w-4 text-primary" />
+        </div>
+        <p className="text-sm text-muted-foreground font-medium">{label}</p>
       </div>
-      <p className={`text-3xl font-bold ${valueClass}`}>{value}</p>
-      <p className="text-xs text-muted-foreground mt-1">{sub}</p>
+      <p className={`text-2xl font-bold ${valueClass ?? ""}`}>{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
     </div>
   )
 }
 
 function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
   return (
-    <div className="py-16 text-center text-muted-foreground">
-      <Icon className="h-10 w-10 mx-auto mb-2 opacity-30" />
-      <p>{message}</p>
+    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+      <Icon className="h-10 w-10 mb-3 opacity-30" />
+      <p className="text-sm">{message}</p>
     </div>
   )
 }

@@ -6,9 +6,10 @@ export interface Product {
   id: number
   name: string
   price: number
-  image: string
+  image: string | null
   category: string
-  description?: string
+  description?: string | null
+  available?: boolean
 }
 
 interface CartItem extends Product {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { X } from "lucide-react"
+import { X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -23,41 +23,48 @@ export default function ProductModal({ isOpen, onClose, product, mode }: Product
   const [category, setCategory] = useState("")
   const [image, setImage] = useState("")
   const [description, setDescription] = useState("")
+  const [available, setAvailable] = useState(true)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (product && mode === "edit") {
       setName(product.name)
       setPrice(product.price.toString())
       setCategory(product.category)
-      setImage(product.image)
+      setImage(product.image || "")
       setDescription(product.description || "")
+      setAvailable(product.available ?? true)
     } else {
       setName("")
       setPrice("")
       setCategory("")
       setImage("")
       setDescription("")
+      setAvailable(true)
     }
   }, [product, mode, isOpen])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    const productData = {
-      name,
-      price: parseFloat(price),
-      category,
-      image: image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop",
-      description: description || undefined,
+    setSaving(true)
+    try {
+      const productData = {
+        name,
+        price: parseFloat(price),
+        category,
+        image: image || null,
+        description: description || null,
+        available,
+      }
+      if (mode === "edit" && product) {
+        await updateProduct(product.id, productData)
+      } else {
+        await addProduct(productData)
+      }
+      onClose()
+    } finally {
+      setSaving(false)
     }
-
-    if (mode === "edit" && product) {
-      updateProduct(product.id, productData)
-    } else {
-      addProduct(productData)
-    }
-
-    onClose()
   }
 
   if (!isOpen) return null
@@ -118,20 +125,17 @@ export default function ProductModal({ isOpen, onClose, product, mode }: Product
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="image">Image URL</Label>
+            <Label htmlFor="image">Image URL (optional)</Label>
             <Input
               id="image"
               value={image}
               onChange={(e) => setImage(e.target.value)}
               placeholder="https://images.unsplash.com/..."
             />
-            <p className="text-xs text-muted-foreground">
-              Leave empty for default placeholder image
-            </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="description">Description (Optional)</Label>
+            <Label htmlFor="description">Description (optional)</Label>
             <Input
               id="description"
               value={description}
@@ -140,11 +144,23 @@ export default function ProductModal({ isOpen, onClose, product, mode }: Product
             />
           </div>
 
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="available"
+              checked={available}
+              onChange={(e) => setAvailable(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <Label htmlFor="available" className="cursor-pointer">Available for sale</Label>
+          </div>
+
           <div className="flex gap-2 pt-4">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">
               Cancel
             </Button>
-            <Button type="submit" className="flex-1">
+            <Button type="submit" disabled={saving} className="flex-1 gap-2">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {mode === "add" ? "Add Product" : "Save Changes"}
             </Button>
           </div>

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { PlusCircle, Plus, Pencil, Trash2 } from "lucide-react"
+import { PlusCircle, Plus, Pencil, Trash2, Loader2 } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,12 +19,18 @@ interface ProductGridProps {
 
 export default function ProductGrid({ category, searchQuery }: ProductGridProps) {
   const { addToCart } = useCart()
-  const { products, isEditMode, deleteProduct } = useProducts()
+  const { products, isLoading, isEditMode, deleteProduct } = useProducts()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [modalMode, setModalMode] = useState<"add" | "edit">("add")
 
-  const filteredProducts = products.filter((product) => {
+  // In edit mode (admin), show all products including unavailable ones
+  // In normal mode (cashier), only show available products
+  const visibleProducts = isEditMode
+    ? products
+    : products.filter((p) => p.available !== false)
+
+  const filteredProducts = visibleProducts.filter((product) => {
     const matchesCategory = category === "all" || product.category === category
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase())
     return matchesCategory && matchesSearch
@@ -43,15 +49,26 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
     setIsModalOpen(true)
   }
 
-  const handleDeleteProduct = (productId: number, e: React.MouseEvent) => {
+  const handleDeleteProduct = async (productId: number, e: React.MouseEvent) => {
     e.stopPropagation()
     if (confirm("Are you sure you want to delete this product?")) {
-      deleteProduct(productId)
+      await deleteProduct(productId)
     }
   }
 
   const isPromoCategory = (cat: string) => {
     return cat === "beer-buckets" || cat === "grill-diners-budget"
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">Loading menu...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -78,17 +95,24 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
             key={product.id}
             className={`overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer group relative ${
               isPromoCategory(product.category) ? "ring-2 ring-orange-500 ring-offset-2" : ""
-            }`}
-            onClick={() => !isEditMode && addToCart(product)}
+            } ${!product.available && isEditMode ? "opacity-60" : ""}`}
+            onClick={() => !isEditMode && product.available !== false && addToCart(product)}
           >
-            {/* PROMO Badge for Beer Buckets and Grill Diners Budget */}
+            {/* PROMO Badge */}
             {isPromoCategory(product.category) && (
               <Badge className="absolute top-2 left-2 z-20 bg-orange-500 hover:bg-orange-600 text-white text-[10px] px-1.5 py-0.5">
                 PROMO
               </Badge>
             )}
 
-            {/* Edit Mode Icons */}
+            {/* Unavailable badge in edit mode */}
+            {isEditMode && !product.available && (
+              <Badge className="absolute top-2 left-2 z-20 bg-red-500 text-white text-[10px] px-1.5 py-0.5">
+                Unavailable
+              </Badge>
+            )}
+
+            {/* Edit Mode Controls */}
             {isEditMode && (
               <div className="absolute top-2 right-2 z-20 flex gap-1">
                 <Button
@@ -135,12 +159,9 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
           </Card>
         ))}
 
-        {filteredProducts.length === 0 && !isEditMode && category !== "all" && (
+        {filteredProducts.length === 0 && !isEditMode && (
           <div className="col-span-full py-12 text-center">
             <p className="text-muted-foreground">No items found in this category</p>
-            <Button variant="link" onClick={handleAddProduct} className="mt-2">
-              <Plus className="h-4 w-4 mr-1" /> Add the first item
-            </Button>
           </div>
         )}
       </div>

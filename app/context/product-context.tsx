@@ -1,116 +1,147 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode, useEffect } from "react"
-import { initialProducts } from "../data/products"
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react"
 import type { Product } from "./cart-context"
 
-interface Category {
+export interface Category {
   id: string
   name: string
+  display_order?: number
 }
 
 interface ProductContextType {
   products: Product[]
   categories: Category[]
+  isLoading: boolean
   isEditMode: boolean
   toggleEditMode: () => void
-  addProduct: (product: Omit<Product, "id">) => void
-  updateProduct: (id: number, product: Partial<Product>) => void
-  deleteProduct: (id: number) => void
-  addCategory: (category: Category) => void
-  updateCategory: (id: string, name: string) => void
-  deleteCategory: (id: string) => void
+  refreshProducts: () => Promise<void>
+  refreshCategories: () => Promise<void>
+  addProduct: (product: Omit<Product, "id">) => Promise<void>
+  updateProduct: (id: number, fields: Partial<Product>) => Promise<void>
+  deleteProduct: (id: number) => Promise<void>
+  addCategory: (category: Category) => Promise<void>
+  updateCategory: (id: string, name: string) => Promise<void>
+  deleteCategory: (id: string) => Promise<{ error?: string }>
 }
 
 const ProductContext = createContext<ProductContextType | undefined>(undefined)
 
-const defaultCategories: Category[] = [
-  { id: "main-course", name: "Main Course" },
-  { id: "appetizer", name: "Appetizer" },
-  { id: "pasta-noodles", name: "Pasta & Noodles" },
-  { id: "grill-diners-budget", name: "Grill Diners Budget" },
-  { id: "all-day-breakfast-silog", name: "All Day Breakfast Silog" },
-  { id: "combo-meals", name: "Combo Meal's (On Hot Plate)" },
-  { id: "special-set", name: "Special Set" },
-  { id: "snacks-burger-sub", name: "Snack's Burger & Sub" },
-  { id: "american-breakfast", name: "American Breakfast" },
-  { id: "continental-breakfast", name: "Continental Breakfast" },
-  { id: "side-order", name: "Side Order" },
-  { id: "sizzlers", name: "Sizzlers" },
-  { id: "salads", name: "Salads" },
-  { id: "desserts", name: "Desserts" },
-  { id: "shakes", name: "Shakes" },
-  { id: "beers", name: "Beers" },
-  { id: "drinks", name: "Drinks" },
-  { id: "beer-buckets", name: "Beer Buckets (w/ free Sizzling Bopis)" },
-]
-
 export function ProductProvider({ children }: { children: ReactNode }) {
-  const [products, setProducts] = useState<Product[]>(initialProducts)
-  const [categories, setCategories] = useState<Category[]>(defaultCategories)
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isEditMode, setIsEditMode] = useState(false)
 
-  // Load products from localStorage on initial render
-  useEffect(() => {
-    const savedProducts = localStorage.getItem("pos-products")
-    const savedCategories = localStorage.getItem("pos-categories")
-    if (savedProducts) {
-      try {
-        setProducts(JSON.parse(savedProducts))
-      } catch (error) {
-        console.error("Failed to parse products from localStorage:", error)
+  const refreshProducts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/products")
+      if (res.ok) {
+        const data = await res.json()
+        setProducts(data)
       }
-    }
-    if (savedCategories) {
-      try {
-        setCategories(JSON.parse(savedCategories))
-      } catch (error) {
-        console.error("Failed to parse categories from localStorage:", error)
-      }
+    } catch (error) {
+      console.error("Failed to fetch products:", error)
     }
   }, [])
 
-  // Save products to localStorage whenever they change
+  const refreshCategories = useCallback(async () => {
+    try {
+      const res = await fetch("/api/categories")
+      if (res.ok) {
+        const data = await res.json()
+        setCategories(data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch categories:", error)
+    }
+  }, [])
+
+  // Initial load from database
   useEffect(() => {
-    localStorage.setItem("pos-products", JSON.stringify(products))
-  }, [products])
+    const load = async () => {
+      setIsLoading(true)
+      await Promise.all([refreshProducts(), refreshCategories()])
+      setIsLoading(false)
+    }
+    load()
+  }, [refreshProducts, refreshCategories])
 
-  // Save categories to localStorage whenever they change
-  useEffect(() => {
-    localStorage.setItem("pos-categories", JSON.stringify(categories))
-  }, [categories])
+  const toggleEditMode = () => setIsEditMode((prev) => !prev)
 
-  const toggleEditMode = () => {
-    setIsEditMode((prev) => !prev)
+  const addProduct = async (product: Omit<Product, "id">) => {
+    const res = await fetch("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(product),
+    })
+    if (res.ok) {
+      const { product: newProduct } = await res.json()
+      setProducts((prev) => [...prev, newProduct])
+    }
   }
 
-  const addProduct = (product: Omit<Product, "id">) => {
-    const newId = Math.max(...products.map((p) => p.id), 0) + 1
-    setProducts((prev) => [...prev, { ...product, id: newId }])
+  const updateProduct = async (id: number, fields: Partial<Product>) => {
+    const existing = products.find((p) => p.id === id)
+    if (!existing) return
+    const updated = { ...existing, ...fields }
+    const res = await fetch("/api/products", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    })
+    if (res.ok) {
+      const { product: savedProduct } = await res.json()
+      setProducts((prev) => prev.map((p) => (p.id === id ? savedProduct : p)))
+    }
   }
 
-  const updateProduct = (id: number, updatedFields: Partial<Product>) => {
-    setProducts((prev) =>
-      prev.map((product) => (product.id === id ? { ...product, ...updatedFields } : product))
-    )
+  const deleteProduct = async (id: number) => {
+    const res = await fetch("/api/products", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    })
+    if (res.ok) {
+      setProducts((prev) => prev.filter((p) => p.id !== id))
+    }
   }
 
-  const deleteProduct = (id: number) => {
-    setProducts((prev) => prev.filter((product) => product.id !== id))
+  const addCategory = async (category: Category) => {
+    const res = await fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(category),
+    })
+    if (res.ok) {
+      const { category: newCat } = await res.json()
+      setCategories((prev) => [...prev, newCat])
+    }
   }
 
-  const addCategory = (category: Category) => {
-    setCategories((prev) => [...prev, category])
+  const updateCategory = async (id: string, name: string) => {
+    const res = await fetch("/api/categories", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, name }),
+    })
+    if (res.ok) {
+      setCategories((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)))
+    }
   }
 
-  const updateCategory = (id: string, name: string) => {
-    setCategories((prev) =>
-      prev.map((cat) => (cat.id === id ? { ...cat, name } : cat))
-    )
-  }
-
-  const deleteCategory = (id: string) => {
-    setCategories((prev) => prev.filter((cat) => cat.id !== id))
+  const deleteCategory = async (id: string): Promise<{ error?: string }> => {
+    const res = await fetch("/api/categories", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    })
+    if (res.ok) {
+      setCategories((prev) => prev.filter((c) => c.id !== id))
+      return {}
+    }
+    const data = await res.json()
+    return { error: data.error ?? "Failed to delete category" }
   }
 
   return (
@@ -118,8 +149,11 @@ export function ProductProvider({ children }: { children: ReactNode }) {
       value={{
         products,
         categories,
+        isLoading,
         isEditMode,
         toggleEditMode,
+        refreshProducts,
+        refreshCategories,
         addProduct,
         updateProduct,
         deleteProduct,

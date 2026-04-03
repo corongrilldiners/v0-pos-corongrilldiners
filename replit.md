@@ -15,66 +15,69 @@ Production-ready Next.js 15 Point-of-Sale application for **Coron Grill Diners**
 ## Architecture
 
 ### Database Tables
-- **`products`** — 99 seeded menu items with category, price, image
+- **`products`** — 99 seeded menu items with category, price, image, available flag
+- **`categories`** — 18 seeded menu categories with display_order
 - **`sales`** — order records: items JSON, totals, payment method, server name, `created_by`
 - **`users`** — staff accounts with bcrypt-hashed passwords and role (cashier/admin)
+- **`shifts`** — shift tracking per cashier
+
+### Data Sync Architecture
+- **Single Source of Truth**: All products and categories are stored in PostgreSQL.
+- **Product Context** (`product-context.tsx`) fetches from `/api/products` and `/api/categories` on mount. All mutations (add/edit/delete/toggle availability) go through the API and update in-memory state instantly.
+- **No localStorage** for products or categories — everything syncs live from the DB.
+- Admin changes in Menu Management and in the POS Edit Mode are immediately visible to all cashiers.
 
 ### Authentication & RBAC
 - Endpoint: `/login` — credentials form (username + password)
 - Session: JWT stored in cookie (30-day expiry)
 - Middleware (`middleware.ts`) protects all routes except `/login` and `/api/auth/*`
 - Roles:
-  - **cashier** — POS access only, no edit mode, no admin dashboard
-  - **admin** — full access: edit mode toggle (Settings button), Admin Dashboard link, product/category management
+  - **cashier** (`/`) — POS access only. Shift required to start. Cannot access admin panel.
+  - **admin** (`/admin`) — Full dashboard: sales, shift reports, menu management, staff list.
+  - **admin POS** (`/pos`) — Admin-only POS with Edit Menu toggle and back-to-dashboard button.
 
 ### Staff Accounts
 | Username | Password | Role |
 |---|---|---|
-| cashier1 | cashier1 | Cashier |
-| cashier2 | cashier2 | Cashier |
-| cashier3 | cashier3 | Cashier |
-| cashier4 | cashier4 | Cashier |
+| cashier1 | cashier123 | Cashier |
+| cashier2 | cashier123 | Cashier |
+| cashier3 | cashier123 | Cashier |
+| cashier4 | cashier123 | Cashier |
 | admin | admin123 | Admin |
 
 ### Key Files
 ```
 app/
-  layout.tsx          — Root layout with SessionProvider, PWA meta, SwRegister
-  page.tsx            — Main POS page
+  layout.tsx          — Root layout with SessionProvider, PWA meta, ProductProvider, CartProvider
+  page.tsx            — Cashier POS (redirects admin to /admin)
+  pos/page.tsx        — Admin POS (redirects non-admin to /)
   login/page.tsx      — Login form (next-auth signIn)
-  admin/page.tsx      — Admin dashboard (role-gated, admin only)
-  checkout/page.tsx   — Checkout flow with session-aware server name + offline fallback
+  admin/page.tsx      — Admin dashboard (sidebar: Dashboard/Shifts/Menu/Staff + Open POS)
+  checkout/page.tsx   — Checkout flow
   providers.tsx       — SessionProvider wrapper
   context/
-    cart-context.tsx
-    product-context.tsx
+    cart-context.tsx         — Cart state (Product type includes available field)
+    product-context.tsx      — DB-backed product/category state (no localStorage)
   components/
-    category-sidebar.tsx  — RBAC: user info, Settings toggle (admin), Admin link, logout
-    product-grid.tsx      — "Add Product" only shows in admin edit mode
+    category-sidebar.tsx  — RBAC: user info, shift info, Settings toggle (admin), logout
+    product-grid.tsx      — Filters unavailable products for cashiers; shows all + badges in edit mode
+    product-modal.tsx     — Add/Edit product modal (admin POS edit mode) — saves to DB
     thermal-receipt.tsx   — 80mm thermal receipt with QR code
-    sw-register.tsx       — Service Worker registration + offline banner + offline sync
 
 lib/
   auth.ts    — NextAuthOptions (CredentialsProvider + JWT/session callbacks)
   db.ts      — pg Pool connection via DATABASE_URL
 
-middleware.ts   — withAuth() protects all non-public routes
-
-types/
-  next-auth.d.ts  — Session/JWT type augmentation (role, id fields)
-
-hooks/
-  use-offline-sync.ts  — Queue failed POST /api/sales to localStorage, drain on reconnect
+middleware.ts   — withAuth() protects routes; admin→/admin from /, cashier→/ from /pos
 
 app/api/
   auth/[...nextauth]/route.ts  — NextAuth handler
-  products/route.ts            — GET products (filtered by category), POST/PUT/DELETE
-  sales/route.ts               — POST (record sale + created_by), GET (daily stats)
-
-public/
-  manifest.json   — PWA manifest
-  sw.js           — Service Worker (network-first HTML, cache static assets, offline API fallback)
-  offline.html    — Offline fallback page
+  products/route.ts            — GET/POST/PUT/DELETE products (admin only for mutations)
+  categories/route.ts          — GET/POST/PUT/DELETE categories (admin only for mutations)
+  sales/route.ts               — POST (record sale), GET (daily stats + recent orders)
+  shifts/route.ts              — GET shifts by date (admin)
+  shifts/current/route.ts      — GET/PATCH current open shift
+  users/route.ts               — GET all users (admin only)
 ```
 
 ### Environment Variables

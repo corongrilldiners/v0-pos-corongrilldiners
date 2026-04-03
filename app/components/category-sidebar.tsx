@@ -115,15 +115,13 @@ export default function CategorySidebar({
     }
   }
 
-  const handleDeleteCategory = (id: string, e: React.MouseEvent) => {
+  const handleDeleteCategory = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const categoryProducts = products.filter(p => p.category === id)
-    if (categoryProducts.length > 0) {
-      alert(`Cannot delete category. It has ${categoryProducts.length} product(s). Please remove or reassign them first.`)
-      return
-    }
-    if (confirm("Are you sure you want to delete this category?")) {
-      deleteCategory(id)
+    if (!confirm("Are you sure you want to delete this category?")) return
+    const result = await deleteCategory(id)
+    if (result?.error) {
+      alert(result.error)
+    } else {
       if (selectedCategory === id) onSelectCategory("all")
     }
   }
