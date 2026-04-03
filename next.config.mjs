@@ -16,21 +16,15 @@ const nextConfig = {
       { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
-  async headers() {
-    const isDev = process.env.NODE_ENV !== "production"
-    if (!isDev) return []
-    return [
-      {
-        source: "/_next/:path*",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "no-store, max-age=0",
-          },
-        ],
-      },
-    ]
-  },
+  allowedDevOrigins: [
+    "*.replit.dev",
+    "*.sisko.replit.dev",
+    "*.kirk.replit.dev",
+    "*.picard.replit.dev",
+    ...(process.env.REPLIT_DEV_DOMAIN
+      ? [`https://${process.env.REPLIT_DEV_DOMAIN}`, process.env.REPLIT_DEV_DOMAIN]
+      : []),
+  ],
 }
 
 export default nextConfig

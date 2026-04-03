@@ -63,6 +63,7 @@ export default function LoginPage() {
               width={80}
               height={80}
               className="object-contain rounded-full mb-3"
+              priority
             />
             <h1 className="text-xl font-bold text-center">Coron Grill Diners</h1>
             <p className="text-sm text-muted-foreground text-center mt-1">

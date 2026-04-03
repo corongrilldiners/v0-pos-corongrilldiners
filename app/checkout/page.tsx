@@ -51,10 +51,10 @@ export default function CheckoutPage() {
   const [showSummaryModal, setShowSummaryModal] = useState(false)
   const [orderNumber] = useState(generateOrderNumber())
   const [dateTime] = useState(formatDateTime())
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [cartSnapshot, setCartSnapshot] = useState<typeof cart>([])
-  const [cartTotalSnapshot, setCartTotalSnapshot] = useState(0)
+  const [cartSnapshot] = useState<typeof cart>(() => [...cart])
+  const [cartTotalSnapshot] = useState(() => cartTotal)
   const receiptRef = useRef<HTMLDivElement>(null)
 
   // Pre-fill server name from session
@@ -63,16 +63,6 @@ export default function CheckoutPage() {
       setServerName(session.user.name)
     }
   }, [session])
-
-  // 1-second spinner to ensure cart state is fully synced
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setCartSnapshot([...cart])
-      setCartTotalSnapshot(cartTotal)
-      setIsLoading(false)
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [cart, cartTotal])
 
   const serviceCharge = includeServiceCharge ? cartTotalSnapshot * 0.05 : 0
   const grandTotal = cartTotalSnapshot + serviceCharge

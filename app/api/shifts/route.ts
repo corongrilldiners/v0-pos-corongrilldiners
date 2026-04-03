@@ -12,22 +12,40 @@ export async function POST(request: Request) {
   try {
     const { startBalance } = await request.json()
 
-    // Check if there's already an open shift for this user today
+    // If there's already an open shift for this cashier today, return it (idempotent)
     const existing = await pool.query(
-      `SELECT id FROM shifts
+      `SELECT
+         id, cashier_id, cashier_name, cashier_username,
+         start_time, end_time, status,
+         start_balance::float,
+         end_balance::float,
+         total_cash_sales::float,
+         total_sales::float,
+         expected_cash::float,
+         discrepancy::float
+       FROM shifts
        WHERE cashier_id = $1 AND status = 'open'
          AND DATE(start_time AT TIME ZONE 'Asia/Manila') = CURRENT_DATE AT TIME ZONE 'Asia/Manila'
+       ORDER BY start_time DESC
        LIMIT 1`,
       [session.user.id]
     )
     if (existing.rows.length > 0) {
-      return NextResponse.json({ error: "Shift already open" }, { status: 400 })
+      return NextResponse.json({ shift: existing.rows[0] })
     }
 
     const result = await pool.query(
       `INSERT INTO shifts (cashier_id, cashier_name, cashier_username, start_balance, status)
        VALUES ($1, $2, $3, $4, 'open')
-       RETURNING *`,
+       RETURNING
+         id, cashier_id, cashier_name, cashier_username,
+         start_time, end_time, status,
+         start_balance::float,
+         end_balance::float,
+         total_cash_sales::float,
+         total_sales::float,
+         expected_cash::float,
+         discrepancy::float`,
       [session.user.id, session.user.name, (session.user as any).username ?? session.user.name, startBalance]
     )
 
