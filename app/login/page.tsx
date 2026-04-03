@@ -77,7 +77,7 @@ export default function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. cashier1 or admin"
+                placeholder="Enter your username"
                 autoComplete="username"
                 required
                 disabled={isLoading}
@@ -113,12 +113,6 @@ export default function LoginPage() {
               {isLoading ? "Signing in..." : "Sign In"}
             </Button>
           </form>
-
-          <div className="mt-6 pt-4 border-t text-center text-xs text-muted-foreground">
-            <p className="font-medium mb-1">Staff Accounts</p>
-            <p>cashier1–4 / cashier1–4</p>
-            <p>admin / admin123</p>
-          </div>
         </div>
       </div>
     </div>
