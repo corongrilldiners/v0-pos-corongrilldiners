@@ -214,7 +214,7 @@ export default function AdminPage() {
           <div className="pt-3 mt-3 border-t">
             {/* Open POS button */}
             <button
-              onClick={() => { window.location.href = "/?adminpos=1" }}
+              onClick={() => router.push("/pos")}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold bg-green-600 text-white hover:bg-green-700 transition-colors"
             >
               <ShoppingCart className="h-4 w-4 flex-shrink-0" />

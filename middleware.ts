@@ -4,14 +4,16 @@ import { NextResponse } from "next/server"
 export default withAuth(
   function middleware(req) {
     const token = req.nextauth.token
-    const { pathname, searchParams } = req.nextUrl
+    const { pathname } = req.nextUrl
 
-    // Allow admins to access the POS directly when they explicitly choose to
-    const isAdminPOSMode = searchParams.get("adminpos") === "1"
-
-    // Redirect admin users from "/" to "/admin" unless they chose to open the POS
-    if (pathname === "/" && token?.role === "admin" && !isAdminPOSMode) {
+    // Redirect admin away from the cashier POS root to the admin dashboard
+    if (pathname === "/" && token?.role === "admin") {
       return NextResponse.redirect(new URL("/admin", req.url))
+    }
+
+    // Block cashiers from accessing the admin-only POS and admin panel
+    if (pathname === "/pos" && token?.role !== "admin") {
+      return NextResponse.redirect(new URL("/", req.url))
     }
 
     return NextResponse.next()
