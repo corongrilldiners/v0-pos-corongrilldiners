@@ -37,4 +37,4 @@ externalPort = 80
 [userenv]
 
 [userenv.shared]
-NEXTAUTH_SECRET = "1dc30faee029c71e9562a63d7a34820affa58e28451c6e23eb9879b679338999"
+NEXTAUTH_SECRET = "c8358e2f4f1983c6897eb02f189ecdd5"
