@@ -21,9 +21,8 @@ export async function GET() {
          expected_cash::float,
          discrepancy::float
        FROM public.shifts
-       WHERE cashier_id = $1
+       WHERE cashier_id = $1::integer
          AND status = 'open'
-         AND DATE(start_time AT TIME ZONE 'Asia/Manila') = CURRENT_DATE AT TIME ZONE 'Asia/Manila'
        ORDER BY start_time DESC
        LIMIT 1`,
       [session.user.id]
@@ -43,13 +42,23 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const { endBalance } = await request.json()
+    const body = await request.json()
+    const endBalance = parseFloat(body.endBalance) || 0
 
-    // Get the open shift
+    // Find the most recent open shift for this cashier
     const shiftResult = await pool.query(
-      `SELECT * FROM public.shifts
-       WHERE cashier_id = $1 AND status = 'open'
-         AND DATE(start_time AT TIME ZONE 'Asia/Manila') = CURRENT_DATE AT TIME ZONE 'Asia/Manila'
+      `SELECT
+         id, cashier_id, cashier_name, cashier_username,
+         start_time, end_time, status,
+         start_balance::float,
+         end_balance::float,
+         total_cash_sales::float,
+         total_sales::float,
+         expected_cash::float,
+         discrepancy::float
+       FROM public.shifts
+       WHERE cashier_id = $1::integer
+         AND status = 'open'
        ORDER BY start_time DESC
        LIMIT 1`,
       [session.user.id]
@@ -61,20 +70,27 @@ export async function PATCH(request: Request) {
 
     const shift = shiftResult.rows[0]
 
-    // Calculate total cash sales and total sales during this shift
+    // Sum sales for this cashier since shift started
+    // Match by cashier_username (most reliable) then fall back to name
     const salesResult = await pool.query(
       `SELECT
          COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN grand_total ELSE 0 END), 0)::float AS cash_sales,
          COALESCE(SUM(grand_total), 0)::float AS total_sales
        FROM public.sales
-       WHERE created_by = $1
-         AND created_at >= $2`,
-      [session.user.name, shift.start_time]
+       WHERE (created_by = $1 OR created_by = $2)
+         AND created_at >= $3`,
+      [
+        shift.cashier_name,
+        shift.cashier_username,
+        shift.start_time,
+      ]
     )
 
-    const { cash_sales: cashSales, total_sales: totalSales } = salesResult.rows[0]
-    const expectedCash = parseFloat(shift.start_balance) + cashSales
-    const discrepancy = endBalance - expectedCash
+    const cashSales: number = salesResult.rows[0].cash_sales
+    const totalSales: number = salesResult.rows[0].total_sales
+    const startBalance: number = shift.start_balance
+    const expectedCash: number = startBalance + cashSales
+    const discrepancy: number = endBalance - expectedCash
 
     // Close the shift
     const updated = await pool.query(
@@ -100,8 +116,11 @@ export async function PATCH(request: Request) {
     )
 
     return NextResponse.json({ shift: updated.rows[0] })
-  } catch (error) {
-    console.error("Failed to close shift:", error)
-    return NextResponse.json({ error: "Failed to close shift" }, { status: 500 })
+  } catch (error: any) {
+    console.error("Failed to close shift:", error?.message ?? error)
+    return NextResponse.json(
+      { error: "Failed to close shift", detail: error?.message ?? "unknown" },
+      { status: 500 }
+    )
   }
 }

@@ -24,8 +24,7 @@ export async function POST(request: Request) {
          expected_cash::float,
          discrepancy::float
        FROM public.shifts
-       WHERE cashier_id = $1 AND status = 'open'
-         AND DATE(start_time AT TIME ZONE 'Asia/Manila') = CURRENT_DATE AT TIME ZONE 'Asia/Manila'
+       WHERE cashier_id = $1::integer AND status = 'open'
        ORDER BY start_time DESC
        LIMIT 1`,
       [session.user.id]
