@@ -1,31 +1,52 @@
 # Coron Grill Diners — POS System
 
 ## Project Overview
-Production-ready Next.js 15 Point-of-Sale application for **Coron Grill Diners** restaurant. Migrated from Vercel to Replit with a full PostgreSQL backend, offline-first PWA support, and multi-user login with RBAC.
+Production-ready Next.js 15 Point-of-Sale application for **Coron Grill Diners** restaurant.
+- **Dev environment**: Replit (port 5000)
+- **Production**: Vercel (`https://v0-pos-corongrilldiners.vercel.app`)
+- **Database**: Supabase PostgreSQL (`public` schema)
 
 ## Tech Stack
 - **Framework**: Next.js 15 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS + shadcn/ui
-- **Database**: Replit PostgreSQL (via `pg` pool)
+- **Database**: Supabase PostgreSQL via `pg` pool (`lib/db.ts`)
+- **ORM**: Prisma v7 (schema introspection only — runtime uses raw `pg` pool)
 - **Auth**: next-auth v4 (JWT strategy, Credentials provider)
 - **Package Manager**: pnpm
 - **Port**: 5000, Host: 0.0.0.0
 
+## Database — Supabase
+
+### Connection
+- `lib/db.ts` uses `pg.Pool` with `ssl: { rejectUnauthorized: false }` for Supabase connections.
+- The SSL mode params are stripped from the connection string before connecting (Replit SSL chain issue).
+- On Vercel (production) SSL works natively; the `rejectUnauthorized: false` is safe since Vercel has proper certs.
+
+### Tables (public schema)
+- **`public.users`** — staff accounts: `id, username, name, password_hash, role`
+- **`public.categories`** — 18 seeded menu categories: `id (slug), name, display_order`
+- **`public.products`** — 99 seeded menu items: `name, price, category, image_url, description, available`
+- **`public.sales`** — order records: `order_number, items (jsonb), subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name, created_by, created_at`
+- **`public.shifts`** — shift tracking per cashier (FK → users.id)
+
+### Seeded Data
+- 5 users (admin + cashier1–4), 18 categories, 99 products
+- Seed script: `scripts/seed_supabase.js`
+- Migration script: `scripts/migrate_supabase.js`
+
+### Prisma
+- Schema: `prisma/schema.prisma` (pulled via `prisma db pull`)
+- Config: `prisma.config.ts` (Prisma v7 style)
+- Generated client: `lib/generated/prisma` (gitignored — regenerated via `postinstall`)
+
 ## Architecture
 
-### Database Tables
-- **`products`** — 99 seeded menu items with category, price, image, available flag
-- **`categories`** — 18 seeded menu categories with display_order
-- **`sales`** — order records: items JSON, totals, payment method, server name, `created_by`
-- **`users`** — staff accounts with bcrypt-hashed passwords and role (cashier/admin)
-- **`shifts`** — shift tracking per cashier
-
-### Data Sync Architecture
-- **Single Source of Truth**: All products and categories are stored in PostgreSQL.
-- **Product Context** (`product-context.tsx`) fetches from `/api/products` and `/api/categories` on mount. All mutations (add/edit/delete/toggle availability) go through the API and update in-memory state instantly.
-- **No localStorage** for products or categories — everything syncs live from the DB.
-- Admin changes in Menu Management and in the POS Edit Mode are immediately visible to all cashiers.
+### Data Sync
+- **Single Source of Truth**: All products and categories live in Supabase.
+- `product-context.tsx` fetches from `/api/products` and `/api/categories` on mount.
+- All mutations (add/edit/delete/toggle availability) go through API routes.
+- Admin changes in Menu Management and POS Edit Mode are immediately visible to all cashiers.
 
 ### Authentication & RBAC
 - Endpoint: `/login` — credentials form (username + password)
@@ -48,50 +69,62 @@ Production-ready Next.js 15 Point-of-Sale application for **Coron Grill Diners**
 ### Key Files
 ```
 app/
-  layout.tsx          — Root layout with SessionProvider, PWA meta, ProductProvider, CartProvider
+  layout.tsx          — Root layout with SessionProvider, ProductProvider, CartProvider
   page.tsx            — Cashier POS (redirects admin to /admin)
   pos/page.tsx        — Admin POS (redirects non-admin to /)
   login/page.tsx      — Login form (next-auth signIn)
-  admin/page.tsx      — Admin dashboard (sidebar: Dashboard/Shifts/Menu/Staff + Open POS)
+  admin/page.tsx      — Admin dashboard
   checkout/page.tsx   — Checkout flow
   providers.tsx       — SessionProvider wrapper
   context/
-    cart-context.tsx         — Cart state (Product type includes available field)
-    product-context.tsx      — DB-backed product/category state (no localStorage)
+    cart-context.tsx         — Cart state
+    product-context.tsx      — DB-backed product/category state
   components/
     category-sidebar.tsx  — RBAC: user info, shift info, Settings toggle (admin), logout
-    product-grid.tsx      — Filters unavailable products for cashiers; shows all + badges in edit mode
-    product-modal.tsx     — Add/Edit product modal (admin POS edit mode) — saves to DB
+    product-grid.tsx      — Filters unavailable products for cashiers
+    product-modal.tsx     — Add/Edit product modal (admin)
     thermal-receipt.tsx   — 80mm thermal receipt with QR code
 
 lib/
-  auth.ts    — NextAuthOptions (CredentialsProvider + JWT/session callbacks)
-  db.ts      — pg Pool connection via DATABASE_URL
+  auth.ts    — NextAuthOptions (queries public.users)
+  db.ts      — pg Pool with Supabase SSL handling
 
-middleware.ts   — withAuth() protects routes; admin→/admin from /, cashier→/ from /pos
+middleware.ts   — withAuth() protects routes
 
 app/api/
   auth/[...nextauth]/route.ts  — NextAuth handler
-  products/route.ts            — GET/POST/PUT/DELETE products (admin only for mutations)
-  categories/route.ts          — GET/POST/PUT/DELETE categories (admin only for mutations)
-  sales/route.ts               — POST (record sale), GET (daily stats + recent orders)
+  products/route.ts            — GET/POST/PUT/DELETE (public.products)
+  categories/route.ts          — GET/POST/PUT/DELETE (public.categories)
+  sales/route.ts               — POST record sale, GET daily stats
   shifts/route.ts              — GET shifts by date (admin)
   shifts/current/route.ts      — GET/PATCH current open shift
   users/route.ts               — GET all users (admin only)
 ```
 
 ### Environment Variables
-- `DATABASE_URL` — Replit PostgreSQL connection string
-- `NEXTAUTH_SECRET` — Random 32-byte hex secret for JWT signing
-- `NEXTAUTH_URL` — Base URL of the app (set to Replit dev domain)
+| Variable | Where set | Value |
+|---|---|---|
+| `DATABASE_URL` | Replit Secrets + Vercel Env | Supabase pooler connection string |
+| `NEXTAUTH_SECRET` | Replit Secrets + Vercel Env | Random 32-byte secret |
+| `NEXTAUTH_URL` | Vercel Env only | `https://v0-pos-corongrilldiners.vercel.app` |
+
+**Note**: `NEXTAUTH_URL` is auto-derived from `REPLIT_DEV_DOMAIN` in `next.config.mjs` on Replit.
+On Vercel it must be set manually in Vercel's Environment Variables dashboard.
+
+## Vercel Deployment
+Required env vars in Vercel Dashboard → Settings → Environment Variables:
+1. `DATABASE_URL` — copy from Replit Secrets (Supabase pooler URL)
+2. `NEXTAUTH_SECRET` — copy from Replit Secrets
+3. `NEXTAUTH_URL` — set to `https://v0-pos-corongrilldiners.vercel.app`
+
+After setting env vars, trigger a redeploy from the Vercel dashboard.
 
 ## PWA / Offline
 - Service Worker (`/sw.js`) registered on first load
-- HTML pages: always network-first (never cached, to avoid stale asset version issues)
-- Static assets (images, fonts): cache-first
+- HTML pages: always network-first
+- Static assets: cache-first
 - API calls: network-first with offline JSON fallback
 - Failed POST /api/sales → saved to localStorage, synced when back online
-- Offline banner: shown when `navigator.onLine === false`
 
 ## Receipt Format
 - 80mm thermal paper (CSS media query)
@@ -101,39 +134,15 @@ app/api/
 - Footer: "Thank you for dining! Visit us again in Coron!"
 
 ## Shift Management System
-
-### Database Table: `shifts`
-| Column | Type | Description |
-|---|---|---|
-| cashier_id | INT | References users.id |
-| cashier_name | VARCHAR | Display name |
-| cashier_username | VARCHAR | Login username |
-| start_time | TIMESTAMP | When shift began |
-| end_time | TIMESTAMP | When shift ended (null if open) |
-| start_balance | DECIMAL | Cash in drawer at start |
-| end_balance | DECIMAL | Cash counted at end |
-| total_cash_sales | DECIMAL | Cash sales during shift |
-| total_sales | DECIMAL | All sales during shift |
-| expected_cash | DECIMAL | start_balance + total_cash_sales |
-| discrepancy | DECIMAL | end_balance - expected_cash |
-| status | VARCHAR | 'open' or 'closed' |
-
-### API Routes
-- `GET /api/shifts/current` — Get logged-in user's open shift for today
-- `PATCH /api/shifts/current` — Close current shift (body: `{endBalance}`)
-- `POST /api/shifts` — Start a new shift (body: `{startBalance}`)
-- `GET /api/shifts?date=YYYY-MM-DD` — Admin: get all shifts for a date
-
-### Key Behaviors
-- Cashiers MUST enter starting cash balance when logging in (no open shift → Start Shift modal blocks POS)
+- Cashiers MUST enter starting cash balance when logging in
 - Admins skip the mandatory shift modal
-- Close Shift: shows expected vs actual cash, calculates discrepancy (overage/shortage)
-- After closing, prints a Shift Summary receipt (printable on XPrinter/thermal)
+- Close Shift: shows expected vs actual cash, calculates discrepancy
+- After closing, prints a Shift Summary receipt (XPrinter/thermal compatible)
 - Admin Dashboard "Shift History" tab shows all cashier shifts for selected date
-- Login redirect: `window.location.href = "/"` (hard redirect, no stale session issue)
 
 ## Development Notes
-- Next.js dev mode compiles pages lazily on first request
-- `next.config.mjs` adds `Cache-Control: no-store` for `/_next/*` in dev to prevent stale asset caching
-- Service worker cache name: `cgd-pos-v2` — increment when making breaking SW changes
+- `next.config.mjs` overrides `NEXTAUTH_URL` with `REPLIT_DEV_DOMAIN` when on Replit
+- `package.json` has `postinstall: "prisma generate"` for Vercel builds
+- `lib/db.ts` strips sslmode params from Supabase URL before connecting (Replit proxy SSL quirk)
+- SSL warning in logs is benign — pg library warning about future behavior changes
 - bcrypt hash rounds: 10
