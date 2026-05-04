@@ -39,3 +39,7 @@ externalPort = 80
 [userenv.shared]
 NEXTAUTH_SECRET = "c8358e2f4f1983c6897eb02f189ecdd5"
 NEXTAUTH_URL = "https://v0-pos-corongrilldiners.vercel.app"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 300000
