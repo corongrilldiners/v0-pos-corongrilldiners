@@ -120,6 +120,25 @@ scripts/
 **Note**: `NEXTAUTH_URL` is auto-derived from `REPLIT_DEV_DOMAIN` in `next.config.mjs` on Replit.
 On Vercel it must be set manually in Vercel's Environment Variables dashboard.
 
+## Supabase Unpause Runbook
+
+Supabase free-tier projects auto-pause after 7 days of inactivity. When paused, login hangs indefinitely (spinner) and all API routes that touch the DB fail.
+
+**Symptoms:** `/login` shows an infinite spinner; server logs show `ENOTFOUND` or `connection timeout` errors.
+
+**Steps to restore full functionality:**
+
+1. **Unpause the project** — log into [supabase.com](https://supabase.com), open the project, and click "Restore project" in the banner.
+2. **Fix RLS + reseed passwords** — open the SQL Editor in the Supabase dashboard and paste + run the contents of `scripts/fix-db.sql`. This:
+   - Disables RLS on `public.users` so the auth query always works
+   - Creates permissive `allow_all` policies on `categories`, `products`, `sales`, `shifts`
+   - Reseeds `password_hash` for admin (`admin123`) and all cashiers (`cashier123`)
+3. **Verify login** — try logging in with:
+   - Username: `admin` / Password: `admin123` → lands on `/admin`
+   - Username: `cashier1` / Password: `cashier123` → lands on `/` (POS)
+
+**Note:** The `scripts/fix-db.sql` script is idempotent — safe to re-run if in doubt.
+
 ## Vercel Deployment
 Required env vars in Vercel Dashboard → Settings → Environment Variables:
 1. `DATABASE_URL` — copy from Replit Secrets (Supabase pooler URL)
