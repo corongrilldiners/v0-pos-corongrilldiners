@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Image from "next/image"
-import { PlusCircle, Plus, Pencil, Trash2, Loader2 } from "lucide-react"
+import { PlusCircle, Plus, Pencil, Trash2, Loader2, AlertTriangle, RefreshCw } from "lucide-react"
 
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,13 +19,12 @@ interface ProductGridProps {
 
 export default function ProductGrid({ category, searchQuery }: ProductGridProps) {
   const { addToCart } = useCart()
-  const { products, isLoading, isEditMode, deleteProduct } = useProducts()
+  const { products, isLoading, loadError, retryLoad, isEditMode, deleteProduct } = useProducts()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [modalMode, setModalMode] = useState<"add" | "edit">("add")
+  const [isRetrying, setIsRetrying] = useState(false)
 
-  // In edit mode (admin), show all products including unavailable ones
-  // In normal mode (cashier), only show available products
   const visibleProducts = isEditMode
     ? products
     : products.filter((p) => p.available !== false)
@@ -56,6 +55,12 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
     }
   }
 
+  const handleRetry = async () => {
+    setIsRetrying(true)
+    await retryLoad()
+    setIsRetrying(false)
+  }
+
   const isPromoCategory = (cat: string) => {
     return cat === "beer-buckets" || cat === "grill-diners-budget"
   }
@@ -71,10 +76,36 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="text-center max-w-sm">
+          <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto mb-3" />
+          <h3 className="font-semibold text-base mb-1">Unable to load menu</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            The server could not be reached. Please check your connection and try again.
+          </p>
+          <Button onClick={handleRetry} disabled={isRetrying} variant="outline" size="sm">
+            {isRetrying ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Retrying…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try Again
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {/* Add New Product Button - Only visible in Admin Edit Mode */}
         {isEditMode && (
           <Card
             className="overflow-hidden transition-all duration-200 hover:scale-105 hover:shadow-md cursor-pointer border-2 border-dashed border-primary/50 bg-primary/5 min-h-[200px] flex items-center justify-center"
@@ -98,21 +129,18 @@ export default function ProductGrid({ category, searchQuery }: ProductGridProps)
             } ${!product.available && isEditMode ? "opacity-60" : ""}`}
             onClick={() => !isEditMode && product.available !== false && addToCart(product)}
           >
-            {/* PROMO Badge */}
             {isPromoCategory(product.category) && (
               <Badge className="absolute top-2 left-2 z-20 bg-orange-500 hover:bg-orange-600 text-white text-[10px] px-1.5 py-0.5">
                 PROMO
               </Badge>
             )}
 
-            {/* Unavailable badge in edit mode */}
             {isEditMode && !product.available && (
               <Badge className="absolute top-2 left-2 z-20 bg-red-500 text-white text-[10px] px-1.5 py-0.5">
                 Unavailable
               </Badge>
             )}
 
-            {/* Edit Mode Controls */}
             {isEditMode && (
               <div className="absolute top-2 right-2 z-20 flex gap-1">
                 <Button

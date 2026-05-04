@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Loader2 } from "lucide-react"
+import { Search, Loader2, AlertTriangle, RefreshCw } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import ProductGrid from "./components/product-grid"
 import CartSidebar from "./components/cart-sidebar"
 import CategorySidebar from "./components/category-sidebar"
@@ -21,14 +22,15 @@ export default function POSPage() {
   const {
     shift,
     loading,
+    shiftError,
     showStartModal,
     showCloseModal,
     setShowCloseModal,
     startShift,
     closeShift,
+    refreshShift,
   } = useShift()
 
-  // Redirect admin to dashboard — admin should use /pos for the register
   useEffect(() => {
     if (status === "authenticated" && session?.user?.role === "admin") {
       router.replace("/admin")
@@ -84,6 +86,22 @@ export default function POSPage() {
           </div>
         </div>
 
+        {shiftError && (
+          <div className="mx-4 mt-4 flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span className="flex-1">Unable to reach the server. Shift information could not be loaded.</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-amber-300 bg-white text-amber-800 hover:bg-amber-50"
+              onClick={refreshShift}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Retry
+            </Button>
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto p-4">
           <ProductGrid category={selectedCategory} searchQuery={searchQuery} />
         </div>
@@ -91,7 +109,7 @@ export default function POSPage() {
 
       <CartSidebar />
 
-      {!loading && session?.user && (
+      {!loading && !shiftError && session?.user && (
         <>
           <ShiftStartModal
             open={showStartModal}

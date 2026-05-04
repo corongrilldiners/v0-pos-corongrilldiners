@@ -107,6 +107,7 @@ export default function AdminPage() {
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
   const [securityLog, setSecurityLog] = useState<AuditEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [sectionError, setSectionError] = useState(false)
   const [changePasswordOpen, setChangePasswordOpen] = useState(false)
   const [shiftsKey, setShiftsKey] = useState(0)
 
@@ -116,34 +117,41 @@ export default function AdminPage() {
 
   const fetchSales = useCallback(async (date: string) => {
     const res = await fetch(`/api/sales?date=${date}`)
-    if (res.ok) setSalesData(await res.json())
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    setSalesData(await res.json())
   }, [])
 
   const fetchStaff = useCallback(async () => {
     const res = await fetch("/api/users")
-    if (res.ok) { const j = await res.json(); setStaff(j.users ?? []) }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const j = await res.json(); setStaff(j.users ?? [])
   }, [])
 
   const fetchAuditLog = useCallback(async () => {
     const res = await fetch("/api/audit-log")
-    if (res.ok) { const j = await res.json(); setAuditLog(j.entries ?? []) }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const j = await res.json(); setAuditLog(j.entries ?? [])
   }, [])
 
   const fetchSecurityLog = useCallback(async () => {
     const userId = Number(session?.user?.id)
     if (!Number.isFinite(userId) || userId <= 0) return
     const res = await fetch(`/api/audit-log?actor_id=${userId}&action=change_own_password`)
-    if (res.ok) { const j = await res.json(); setSecurityLog(j.entries ?? []) }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const j = await res.json(); setSecurityLog(j.entries ?? [])
   }, [session?.user])
 
   const refreshCurrent = useCallback(async () => {
     setIsLoading(true)
+    setSectionError(false)
     try {
       if (activeSection === "dashboard") await fetchSales(selectedDate)
       else if (activeSection === "shifts") setShiftsKey(k => k + 1)
       else if (activeSection === "staff") await fetchStaff()
       else if (activeSection === "activity") await fetchAuditLog()
       else if (activeSection === "security") await fetchSecurityLog()
+    } catch {
+      setSectionError(true)
     } finally {
       setIsLoading(false)
     }
@@ -284,6 +292,20 @@ export default function AdminPage() {
             <div className="flex items-center justify-center py-32">
               <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
+          ) : sectionError && activeSection !== "shifts" ? (
+            <div className="flex items-center justify-center py-32">
+              <div className="text-center max-w-sm">
+                <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto mb-3" />
+                <h3 className="font-semibold text-base mb-1">Unable to load data</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  The server could not be reached. Please check your connection and try again.
+                </p>
+                <Button variant="outline" size="sm" onClick={refreshCurrent}>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Try Again
+                </Button>
+              </div>
+            </div>
           ) : activeSection === "dashboard" ? (
             <DashboardSection data={salesData} selectedDate={selectedDate} />
           ) : activeSection === "shifts" ? (
@@ -422,13 +444,19 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
   const [summaryOpen, setSummaryOpen] = useState(false)
   const [summaryLoading, setSummaryLoading] = useState<number | null>(null)
 
+  const [fetchError, setFetchError] = useState(false)
+
   const fetchShifts = useCallback(async () => {
     setLoading(true)
+    setFetchError(false)
     try {
       const params = new URLSearchParams({ date: selectedDate })
       if (showArchived) params.set("include_archived", "true")
       const res = await fetch(`/api/shifts?${params}`)
-      if (res.ok) { const j = await res.json(); setShifts(j.shifts ?? []) }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const j = await res.json(); setShifts(j.shifts ?? [])
+    } catch {
+      setFetchError(true)
     } finally {
       setLoading(false)
     }
@@ -523,6 +551,24 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
     return (
       <div className="flex items-center justify-center py-32">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <div className="text-center max-w-sm">
+          <AlertTriangle className="h-10 w-10 text-amber-500 mx-auto mb-3" />
+          <h3 className="font-semibold text-base mb-1">Unable to load shift records</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            The server could not be reached. Please check your connection and try again.
+          </p>
+          <Button variant="outline" size="sm" onClick={fetchShifts}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
+        </div>
       </div>
     )
   }

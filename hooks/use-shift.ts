@@ -23,26 +23,29 @@ export function useShift() {
   const { data: session, status } = useSession()
   const [shift, setShift] = useState<Shift | null>(null)
   const [loading, setLoading] = useState(true)
+  const [shiftError, setShiftError] = useState(false)
   const [showStartModal, setShowStartModal] = useState(false)
   const [showCloseModal, setShowCloseModal] = useState(false)
 
   const fetchCurrentShift = useCallback(async () => {
     if (!session?.user) return
+    setShiftError(false)
     try {
       const res = await fetch("/api/shifts/current")
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       if (data.shift) {
         setShift(data.shift)
         setShowStartModal(false)
       } else {
         setShift(null)
-        // Only cashiers MUST start a shift; admins can skip
         const isAdmin = (session.user as any).role === "admin"
         if (!isAdmin) setShowStartModal(true)
       }
     } catch {
+      setShiftError(true)
       const isAdmin = (session.user as any).role === "admin"
-      if (!isAdmin) setShowStartModal(true)
+      if (!isAdmin) setShowStartModal(false)
     } finally {
       setLoading(false)
     }
@@ -83,8 +86,6 @@ export function useShift() {
       if (!res.ok) return null
       const data = await res.json()
       setShift(data.shift)
-      // Do NOT close the modal here — the modal shows the summary screen
-      // and will trigger sign-out when the cashier clicks Done.
       return data.shift
     } catch {
       return null
@@ -94,6 +95,7 @@ export function useShift() {
   return {
     shift,
     loading,
+    shiftError,
     showStartModal,
     setShowStartModal,
     showCloseModal,

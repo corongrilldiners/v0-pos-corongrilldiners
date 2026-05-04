@@ -13,6 +13,8 @@ interface ProductContextType {
   products: Product[]
   categories: Category[]
   isLoading: boolean
+  loadError: boolean
+  retryLoad: () => Promise<void>
   isEditMode: boolean
   toggleEditMode: () => void
   refreshProducts: () => Promise<void>
@@ -31,6 +33,7 @@ export function ProductProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
 
   const refreshProducts = useCallback(async () => {
@@ -39,9 +42,12 @@ export function ProductProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json()
         setProducts(data)
+      } else {
+        throw new Error(`HTTP ${res.status}`)
       }
     } catch (error) {
       console.error("Failed to fetch products:", error)
+      throw error
     }
   }, [])
 
@@ -51,21 +57,34 @@ export function ProductProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json()
         setCategories(data)
+      } else {
+        throw new Error(`HTTP ${res.status}`)
       }
     } catch (error) {
       console.error("Failed to fetch categories:", error)
+      throw error
     }
   }, [])
 
-  // Initial load from database
-  useEffect(() => {
-    const load = async () => {
-      setIsLoading(true)
+  const load = useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(false)
+    try {
       await Promise.all([refreshProducts(), refreshCategories()])
+    } catch {
+      setLoadError(true)
+    } finally {
       setIsLoading(false)
     }
-    load()
   }, [refreshProducts, refreshCategories])
+
+  const retryLoad = useCallback(async () => {
+    await load()
+  }, [load])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   const toggleEditMode = () => setIsEditMode((prev) => !prev)
 
@@ -150,6 +169,8 @@ export function ProductProvider({ children }: { children: ReactNode }) {
         products,
         categories,
         isLoading,
+        loadError,
+        retryLoad,
         isEditMode,
         toggleEditMode,
         refreshProducts,
