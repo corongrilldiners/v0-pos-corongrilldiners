@@ -787,10 +787,11 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
 // ─── Activity Log Section ─────────────────────────────────────────────────────
 
 const ACTION_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
-  create_account: { label: "Account Created",  icon: UserPlus,  color: "text-green-600 bg-green-50"  },
-  reset_password:  { label: "Password Reset",   icon: KeySquare, color: "text-amber-600 bg-amber-50"  },
-  delete_account:  { label: "Account Deleted",  icon: UserX,     color: "text-red-600 bg-red-50"      },
-  update_account:  { label: "Account Updated",  icon: UserCog,   color: "text-blue-600 bg-blue-50"    },
+  create_account:      { label: "Account Created",       icon: UserPlus,  color: "text-green-600 bg-green-50"  },
+  reset_password:      { label: "Password Reset",        icon: KeySquare, color: "text-amber-600 bg-amber-50"  },
+  delete_account:      { label: "Account Deleted",       icon: UserX,     color: "text-red-600 bg-red-50"      },
+  update_account:      { label: "Account Updated",       icon: UserCog,   color: "text-blue-600 bg-blue-50"    },
+  change_own_password: { label: "Own Password Changed",  icon: KeyRound,  color: "text-purple-600 bg-purple-50" },
 }
 
 function AuditLogSection({ entries }: { entries: AuditEntry[] }) {

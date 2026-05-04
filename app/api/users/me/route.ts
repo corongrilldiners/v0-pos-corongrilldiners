@@ -4,6 +4,23 @@ import { authOptions } from "@/lib/auth"
 import pool from "@/lib/db"
 import bcrypt from "bcryptjs"
 
+async function logAuditEvent(
+  action: string,
+  actor: { id: number; username: string },
+  target: { id?: number; username?: string } | null,
+  details: string
+) {
+  try {
+    await pool.query(
+      `INSERT INTO public.admin_audit_log (action, actor_id, actor_username, target_user_id, target_username, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [action, actor.id, actor.username, target?.id ?? null, target?.username ?? null, details]
+    )
+  } catch (err) {
+    console.error("Failed to write audit log:", err)
+  }
+}
+
 export async function PATCH(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) {
@@ -48,6 +65,14 @@ export async function PATCH(request: Request) {
     await pool.query(
       "UPDATE public.users SET password_hash = $1 WHERE id = $2",
       [newPasswordHash, session.user.id]
+    )
+
+    const actor = { id: Number(session.user.id), username: session.user.username as string }
+    await logAuditEvent(
+      "change_own_password",
+      actor,
+      { id: Number(session.user.id), username: session.user.username as string },
+      `Changed own password`
     )
 
     return NextResponse.json({ success: true })
