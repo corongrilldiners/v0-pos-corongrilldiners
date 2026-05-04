@@ -36,7 +36,11 @@ export default function LoginPage() {
 
     if (result?.error) {
       setIsLoading(false)
-      setError("Invalid username or password. Please try again.")
+      if (result.error === "DatabaseUnavailable") {
+        setError("Unable to reach the database. Please try again later.")
+      } else {
+        setError("Invalid username or password. Please try again.")
+      }
     } else {
       // Hard redirect to root — middleware reads the session token and routes
       // admin → /admin, cashier → / (POS register)

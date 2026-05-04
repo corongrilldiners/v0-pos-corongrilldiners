@@ -38,6 +38,18 @@ export const authOptions: NextAuthOptions = {
           }
         } catch (error) {
           console.error("Auth error:", error)
+          const e = error as NodeJS.ErrnoException & { code?: string }
+          const isConnectionError =
+            e.code === "ECONNREFUSED" ||
+            e.code === "ETIMEDOUT" ||
+            e.code === "ENOTFOUND" ||
+            e.code === "ECONNRESET" ||
+            (typeof e.message === "string" &&
+              (e.message.toLowerCase().includes("timeout") ||
+                e.message.toLowerCase().includes("connect")))
+          if (isConnectionError) {
+            throw new Error("DatabaseUnavailable")
+          }
           return null
         }
       },
