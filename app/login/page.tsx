@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { signIn, useSession } from "next-auth/react"
 import Image from "next/image"
-import { Loader2, LogIn } from "lucide-react"
+import { Loader2, LogIn, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+
+const DB_RETRY_SECONDS = 10
 
 export default function LoginPage() {
   const { data: session, status } = useSession()
@@ -14,6 +16,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [isDbError, setIsDbError] = useState(false)
+  const [retryCountdown, setRetryCountdown] = useState(0)
+
+  // Armed when a DB error countdown should trigger an automatic retry at 0
+  const autoRetryArmedRef = useRef(false)
 
   // If already authenticated, send to correct dashboard immediately
   useEffect(() => {
@@ -23,9 +30,29 @@ export default function LoginPage() {
     }
   }, [status, session])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Tick the countdown down by 1 each second (pure — no side effects)
+  useEffect(() => {
+    if (retryCountdown <= 0) return
+    const timer = setTimeout(() => {
+      setRetryCountdown((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [retryCountdown])
+
+  // When countdown reaches 0 and an auto-retry is armed, fire the login
+  useEffect(() => {
+    if (retryCountdown !== 0 || !autoRetryArmedRef.current) return
+    autoRetryArmedRef.current = false
+    attemptLogin()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryCountdown])
+
+  const attemptLogin = async () => {
+    if (isLoading) return
+    autoRetryArmedRef.current = false
     setError("")
+    setIsDbError(false)
+    setRetryCountdown(0)
     setIsLoading(true)
 
     const result = await signIn("credentials", {
@@ -37,7 +64,10 @@ export default function LoginPage() {
     if (result?.error) {
       setIsLoading(false)
       if (result.error === "DatabaseUnavailable") {
+        setIsDbError(true)
         setError("Unable to reach the database. Please try again later.")
+        autoRetryArmedRef.current = true
+        setRetryCountdown(DB_RETRY_SECONDS)
       } else if (result.error === "RateLimited") {
         setError("Too many login attempts. Please wait a minute and try again.")
       } else {
@@ -48,6 +78,20 @@ export default function LoginPage() {
       // admin → /admin, cashier → / (POS register)
       window.location.href = "/"
     }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    // Cancel any pending auto-retry before a manual submit
+    autoRetryArmedRef.current = false
+    setRetryCountdown(0)
+    await attemptLogin()
+  }
+
+  const handleRetry = () => {
+    autoRetryArmedRef.current = false
+    setRetryCountdown(0)
+    attemptLogin()
   }
 
   if (status === "loading" || status === "authenticated") {
@@ -107,9 +151,29 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">
-                {error}
-              </p>
+              <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md space-y-2">
+                <p>{error}</p>
+                {isDbError && (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRetry}
+                      disabled={isLoading}
+                      className="border-red-300 text-red-700 hover:bg-red-100"
+                    >
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      Try again
+                    </Button>
+                    {retryCountdown > 0 && (
+                      <span className="text-xs text-red-500">
+                        Retrying automatically in {retryCountdown}s…
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
 
             <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
