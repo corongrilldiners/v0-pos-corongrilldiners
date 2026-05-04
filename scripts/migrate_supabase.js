@@ -80,6 +80,21 @@ async function migrate() {
       console.log(`  ✓ ${u.username} (${u.role})`);
     }
 
+    console.log("Creating public.admin_audit_log table...");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS public.admin_audit_log (
+        id              SERIAL PRIMARY KEY,
+        action          VARCHAR(50)  NOT NULL,
+        actor_id        INTEGER      NOT NULL,
+        actor_username  VARCHAR(100) NOT NULL,
+        target_user_id  INTEGER,
+        target_username VARCHAR(100),
+        details         TEXT,
+        created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+      )
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_log_created_at ON public.admin_audit_log(created_at DESC)`);
+
     const userCount = await client.query("SELECT COUNT(*) FROM public.users");
     console.log(`\nDone. Users in DB: ${userCount.rows[0].count}`);
   } finally {

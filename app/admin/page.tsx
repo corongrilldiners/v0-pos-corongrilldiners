@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Clock, UtensilsCrossed, Users, ShoppingCart,
   LogOut, RefreshCw, TrendingUp, ShoppingBag, Wallet, CreditCard,
   CheckCircle, AlertTriangle, Lock, Plus, Pencil, Trash2,
-  Eye, EyeOff, X, Save, KeyRound,
+  Eye, EyeOff, X, Save, KeyRound, History, UserPlus, KeySquare, UserX, UserCog,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,16 @@ interface Product {
 interface StaffUser {
   id: number; username: string; name: string; role: string; created_at: string
 }
+interface AuditEntry {
+  id: number
+  action: string
+  actor_id: number
+  actor_username: string
+  target_user_id: number | null
+  target_username: string | null
+  details: string
+  created_at: string
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,12 +75,13 @@ function PaymentIcon({ method }: { method: string }) {
 
 // ─── Sidebar nav items ────────────────────────────────────────────────────────
 
-type Section = "dashboard" | "shifts" | "menu" | "staff"
+type Section = "dashboard" | "shifts" | "menu" | "staff" | "activity"
 const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: "dashboard", label: "Dashboard",       icon: LayoutDashboard  },
   { id: "shifts",    label: "Shift Reports",   icon: Clock            },
   { id: "menu",      label: "Menu Management", icon: UtensilsCrossed  },
   { id: "staff",     label: "Staff Accounts",  icon: Users            },
+  { id: "activity",  label: "Activity Log",    icon: History          },
 ]
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -83,6 +94,7 @@ export default function AdminPage() {
   const [salesData, setSalesData] = useState<SalesData | null>(null)
   const [shifts, setShifts] = useState<ShiftRecord[]>([])
   const [staff, setStaff] = useState<StaffUser[]>([])
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [changePasswordOpen, setChangePasswordOpen] = useState(false)
 
@@ -105,16 +117,22 @@ export default function AdminPage() {
     if (res.ok) { const j = await res.json(); setStaff(j.users ?? []) }
   }, [])
 
+  const fetchAuditLog = useCallback(async () => {
+    const res = await fetch("/api/audit-log")
+    if (res.ok) { const j = await res.json(); setAuditLog(j.entries ?? []) }
+  }, [])
+
   const refreshCurrent = useCallback(async () => {
     setIsLoading(true)
     try {
       if (activeSection === "dashboard") await fetchSales(selectedDate)
       else if (activeSection === "shifts") await fetchShifts(selectedDate)
       else if (activeSection === "staff") await fetchStaff()
+      else if (activeSection === "activity") await fetchAuditLog()
     } finally {
       setIsLoading(false)
     }
-  }, [activeSection, selectedDate, fetchSales, fetchShifts, fetchStaff])
+  }, [activeSection, selectedDate, fetchSales, fetchShifts, fetchStaff, fetchAuditLog])
 
   useEffect(() => {
     if (status === "authenticated" && isAdmin && activeSection !== "menu") refreshCurrent()
@@ -143,6 +161,7 @@ export default function AdminPage() {
   }
 
   const showDatePicker = activeSection === "dashboard" || activeSection === "shifts"
+  const showRefresh = activeSection !== "menu"
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
@@ -234,7 +253,7 @@ export default function AdminPage() {
                 className="border rounded-md px-3 py-1.5 text-sm bg-white"
               />
             )}
-            {activeSection !== "menu" && (
+            {showRefresh && (
               <Button variant="outline" size="icon" onClick={refreshCurrent} disabled={isLoading}>
                 <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
               </Button>
@@ -254,6 +273,8 @@ export default function AdminPage() {
             <DashboardSection data={salesData} selectedDate={selectedDate} />
           ) : activeSection === "shifts" ? (
             <ShiftsSection shifts={shifts} selectedDate={selectedDate} />
+          ) : activeSection === "activity" ? (
+            <AuditLogSection entries={auditLog} />
           ) : (
             <StaffSection staff={staff} onRefresh={fetchStaff} />
           )}
@@ -417,6 +438,68 @@ function ShiftsSection({ shifts, selectedDate }: { shifts: ShiftRecord[]; select
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Activity Log Section ─────────────────────────────────────────────────────
+
+const ACTION_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  create_account: { label: "Account Created",  icon: UserPlus,  color: "text-green-600 bg-green-50"  },
+  reset_password:  { label: "Password Reset",   icon: KeySquare, color: "text-amber-600 bg-amber-50"  },
+  delete_account:  { label: "Account Deleted",  icon: UserX,     color: "text-red-600 bg-red-50"      },
+  update_account:  { label: "Account Updated",  icon: UserCog,   color: "text-blue-600 bg-blue-50"    },
+}
+
+function AuditLogSection({ entries }: { entries: AuditEntry[] }) {
+  return (
+    <div className="bg-white rounded-xl border shadow-sm">
+      <div className="p-5 border-b flex items-center justify-between">
+        <div>
+          <h2 className="font-semibold">Activity Log</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Recent account management actions by admins</p>
+        </div>
+        <span className="text-sm text-muted-foreground">{entries.length} event{entries.length !== 1 ? "s" : ""}</span>
+      </div>
+      {entries.length === 0 ? (
+        <EmptyState icon={History} message="No account activity recorded yet." />
+      ) : (
+        <div className="divide-y">
+          {entries.map((entry) => {
+            const meta = ACTION_META[entry.action] ?? { label: entry.action, icon: History, color: "text-gray-600 bg-gray-50" }
+            const Icon = meta.icon
+            return (
+              <div key={entry.id} className="flex items-start gap-4 px-5 py-3.5 hover:bg-gray-50">
+                <div className={`mt-0.5 flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${meta.color}`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm">{meta.label}</span>
+                    {entry.target_username && (
+                      <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">
+                        @{entry.target_username}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{entry.details}</p>
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-xs text-muted-foreground">
+                    by <span className="font-medium text-foreground">@{entry.actor_username}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {new Date(entry.created_at).toLocaleString("en-PH", {
+                      month: "short", day: "numeric", year: "numeric",
+                      hour: "2-digit", minute: "2-digit", hour12: true,
+                    })}
+                  </p>
                 </div>
               </div>
             )

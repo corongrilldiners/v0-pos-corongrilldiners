@@ -19,6 +19,30 @@ function validatePasswordStrength(pw: string): string | null {
   return null
 }
 
+async function logAuditEvent(
+  action: string,
+  actor: { id: number; username: string },
+  target: { id?: number; username?: string } | null,
+  details: string
+) {
+  try {
+    await pool.query(
+      `INSERT INTO public.admin_audit_log (action, actor_id, actor_username, target_user_id, target_username, details)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        action,
+        actor.id,
+        actor.username,
+        target?.id ?? null,
+        target?.username ?? null,
+        details,
+      ]
+    )
+  } catch (err) {
+    console.error("Failed to write audit log:", err)
+  }
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user || session.user.role !== "admin") {
@@ -67,7 +91,16 @@ export async function POST(request: Request) {
       [username.trim().toLowerCase(), name.trim(), allowedRole, passwordHash]
     )
 
-    return NextResponse.json({ user: result.rows[0] })
+    const newUser = result.rows[0]
+    const actor = { id: Number(session.user.id), username: session.user.username as string }
+    await logAuditEvent(
+      "create_account",
+      actor,
+      { id: newUser.id, username: newUser.username },
+      `Created ${allowedRole} account "${newUser.username}" (${newUser.name})`
+    )
+
+    return NextResponse.json({ user: newUser })
   } catch (err) {
     if (pgErrorCode(err) === "23505") {
       return NextResponse.json({ error: "Username already taken" }, { status: 409 })
@@ -90,8 +123,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "ID and name are required" }, { status: 400 })
     }
 
+    const passwordChanged = !!(password && password.trim())
+
     let result
-    if (password && password.trim()) {
+    if (passwordChanged) {
       const strengthError = validatePasswordStrength(password.trim())
       if (strengthError) {
         return NextResponse.json({ error: strengthError }, { status: 400 })
@@ -118,7 +153,26 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    return NextResponse.json({ user: result.rows[0] })
+    const updatedUser = result.rows[0]
+    const actor = { id: Number(session.user.id), username: session.user.username as string }
+
+    if (passwordChanged) {
+      await logAuditEvent(
+        "reset_password",
+        actor,
+        { id: updatedUser.id, username: updatedUser.username },
+        `Reset password for "${updatedUser.username}" (${updatedUser.name})`
+      )
+    } else {
+      await logAuditEvent(
+        "update_account",
+        actor,
+        { id: updatedUser.id, username: updatedUser.username },
+        `Updated name for "${updatedUser.username}" to "${updatedUser.name}"`
+      )
+    }
+
+    return NextResponse.json({ user: updatedUser })
   } catch (err) {
     console.error("Failed to update user:", err)
     return NextResponse.json({ error: "Failed to update user" }, { status: 500 })
@@ -139,14 +193,16 @@ export async function DELETE(request: Request) {
     }
 
     const userCheck = await pool.query(
-      "SELECT role FROM public.users WHERE id = $1",
+      "SELECT id, username, name, role FROM public.users WHERE id = $1",
       [id]
     )
     if (userCheck.rows.length === 0) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    if (userCheck.rows[0].role === "admin") {
+    const targetUser = userCheck.rows[0]
+
+    if (targetUser.role === "admin") {
       const adminCount = await pool.query(
         "SELECT COUNT(*) FROM public.users WHERE role = 'admin'"
       )
@@ -159,6 +215,15 @@ export async function DELETE(request: Request) {
     }
 
     await pool.query("DELETE FROM public.users WHERE id = $1", [id])
+
+    const actor = { id: Number(session.user.id), username: session.user.username as string }
+    await logAuditEvent(
+      "delete_account",
+      actor,
+      { id: targetUser.id, username: targetUser.username },
+      `Deleted ${targetUser.role} account "${targetUser.username}" (${targetUser.name})`
+    )
+
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error("Failed to delete user:", err)
