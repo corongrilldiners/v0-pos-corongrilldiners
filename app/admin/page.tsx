@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Image from "next/image"
 import { useProducts } from "../context/product-context"
 import ChangePasswordDialog from "@/components/change-password-dialog"
+import ShiftSummaryModal from "@/components/shift-summary-modal"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -417,6 +418,8 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
   const [editEndBalance, setEditEndBalance] = useState("")
   const [editSaving, setEditSaving] = useState(false)
   const [actionError, setActionError] = useState("")
+  const [summaryShift, setSummaryShift] = useState<ShiftRecord | null>(null)
+  const [summaryOpen, setSummaryOpen] = useState(false)
 
   const fetchShifts = useCallback(async () => {
     setLoading(true)
@@ -432,20 +435,33 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
 
   useEffect(() => { fetchShifts() }, [fetchShifts])
 
-  const handleViewOrders = async (shiftId: number) => {
-    if (expandedShiftId === shiftId) { setExpandedShiftId(null); return }
-    setExpandedShiftId(shiftId)
-    if (shiftOrders[shiftId] !== undefined) return
+  const fetchShiftOrders = async (shiftId: number): Promise<SaleRecord[]> => {
+    if (shiftOrders[shiftId] !== undefined) return shiftOrders[shiftId]
     setLoadingOrdersFor(shiftId)
     try {
       const res = await fetch(`/api/shifts/${shiftId}/sales`)
       if (res.ok) {
         const j = await res.json()
-        setShiftOrders(prev => ({ ...prev, [shiftId]: j.sales ?? [] }))
+        const sales: SaleRecord[] = j.sales ?? []
+        setShiftOrders(prev => ({ ...prev, [shiftId]: sales }))
+        return sales
       }
     } finally {
       setLoadingOrdersFor(null)
     }
+    return []
+  }
+
+  const handleViewOrders = async (shiftId: number) => {
+    if (expandedShiftId === shiftId) { setExpandedShiftId(null); return }
+    setExpandedShiftId(shiftId)
+    await fetchShiftOrders(shiftId)
+  }
+
+  const handleOpenSummary = async (shift: ShiftRecord) => {
+    setSummaryShift(shift)
+    setSummaryOpen(true)
+    await fetchShiftOrders(shift.id)
   }
 
   const handleArchive = async (shift: ShiftRecord) => {
@@ -622,6 +638,12 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
                     {/* Action buttons */}
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
                       <Button
+                        variant="outline" size="sm" className="h-7 text-xs gap-1.5 bg-primary/5 border-primary/30 hover:bg-primary/10 text-primary font-semibold"
+                        onClick={() => handleOpenSummary(shift)}
+                      >
+                        <FileText className="h-3.5 w-3.5" />Full Summary
+                      </Button>
+                      <Button
                         variant="outline" size="sm" className="h-7 text-xs gap-1.5"
                         onClick={() => handleViewOrders(shift.id)}
                       >
@@ -740,6 +762,16 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
           </div>
         )}
       </div>
+
+      {/* Full Summary Modal */}
+      {summaryShift && (
+        <ShiftSummaryModal
+          open={summaryOpen}
+          onOpenChange={(v) => { setSummaryOpen(v); if (!v) setSummaryShift(null) }}
+          shift={summaryShift}
+          sales={shiftOrders[summaryShift.id] ?? []}
+        />
+      )}
 
       {/* Edit Shift Modal */}
       {editingShift && (
