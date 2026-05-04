@@ -38,9 +38,11 @@ import {
   DoorOpen,
   KeyRound,
   Printer,
+  ClipboardList,
 } from "lucide-react"
 import ChangePasswordDialog from "./change-password-dialog"
 import PrinterSetupDialog from "./printer-setup-dialog"
+import CashierSummaryDialog from "./cashier-summary-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -93,6 +95,7 @@ export default function CategorySidebar({
 
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false)
   const [isPrinterSetupOpen, setIsPrinterSetupOpen] = useState(false)
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false)
 
   const isAdmin = session?.user?.role === "admin"
   const userName = session?.user?.name ?? "Staff"
@@ -361,6 +364,17 @@ export default function CategorySidebar({
 
       {/* Bottom actions */}
       <div className="p-3 border-t space-y-1">
+        {!isAdmin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start text-xs gap-2 h-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+            onClick={() => setIsSummaryOpen(true)}
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            My Sales Summary
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -397,6 +411,11 @@ export default function CategorySidebar({
       <PrinterSetupDialog
         open={isPrinterSetupOpen}
         onOpenChange={setIsPrinterSetupOpen}
+      />
+      <CashierSummaryDialog
+        open={isSummaryOpen}
+        onOpenChange={setIsSummaryOpen}
+        cashierName={userName}
       />
     </div>
   )

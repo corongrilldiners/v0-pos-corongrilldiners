@@ -28,8 +28,8 @@ Production-ready Next.js 15 Point-of-Sale application for **Coron Grill Diners**
 - **`public.users`** — staff accounts: `id, username, name, password_hash, role` — RLS disabled (no RLS needed for internal staff table)
 - **`public.categories`** — 18 seeded menu categories: `id (slug), name, display_order`
 - **`public.products`** — 99 seeded menu items: `name, price, category, image_url, description, available`
-- **`public.sales`** — order records: `order_number, items (jsonb), subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name, created_by, created_at`
-- **`public.shifts`** — shift tracking per cashier (FK → users.id)
+- **`public.sales`** — order records: `order_number, items (jsonb), subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name, created_by, created_at, status ('completed'|'void'|'cancelled'), void_reason`
+- **`public.shifts`** — shift tracking per cashier (FK → users.id): includes `archived (bool)`, `notes (text)`
 
 ### Seeded Data
 - 5 users (admin + cashier1–4), 18 categories, 99 products
@@ -82,10 +82,11 @@ app/
     cart-context.tsx         — Cart state
     product-context.tsx      — DB-backed product/category state
   components/
-    category-sidebar.tsx  — RBAC: user info, shift info, Settings toggle (admin), logout
-    product-grid.tsx      — Filters unavailable products for cashiers
-    product-modal.tsx     — Add/Edit product modal (admin)
-    thermal-receipt.tsx   — 80mm thermal receipt with QR code
+    category-sidebar.tsx      — RBAC: user info, shift info, Settings toggle (admin), logout; "My Sales Summary" for cashiers
+    product-grid.tsx          — Filters unavailable products for cashiers
+    product-modal.tsx         — Add/Edit product modal (admin)
+    thermal-receipt.tsx       — 80mm thermal receipt with QR code
+    cashier-summary-dialog.tsx — Date-picker dialog: daily stats, order list, void action, A4 print
 
 lib/
   auth.ts    — NextAuthOptions (queries public.users)
@@ -100,8 +101,12 @@ app/api/
   auth/[...nextauth]/route.ts  — NextAuth handler
   products/route.ts            — GET/POST/PUT/DELETE (public.products)
   categories/route.ts          — GET/POST/PUT/DELETE (public.categories)
-  sales/route.ts               — POST record sale, GET daily stats
-  shifts/route.ts              — GET shifts by date (admin)
+  sales/route.ts               — POST record sale (status=completed), GET daily stats
+  sales/[id]/route.ts          — PATCH void/cancel/restore a sale order
+  sales/my/route.ts            — GET cashier's own sales for a date
+  shifts/route.ts              — GET shifts by date; supports include_archived param
+  shifts/[id]/route.ts         — PATCH edit shift, DELETE shift
+  shifts/[id]/sales/route.ts   — GET all orders for a specific shift (admin)
   shifts/current/route.ts      — GET/PATCH current open shift
   users/route.ts               — GET/POST/PUT/DELETE (admin only — full staff CRUD)
 scripts/
@@ -166,7 +171,9 @@ After setting env vars, trigger a redeploy from the Vercel dashboard.
 - Admins skip the mandatory shift modal
 - Close Shift: shows expected vs actual cash, calculates discrepancy
 - After closing, prints a Shift Summary receipt (XPrinter/thermal compatible)
-- Admin Dashboard "Shift History" tab shows all cashier shifts for selected date
+- Admin Dashboard "Shift History" tab: filter Active/Archived/All, expand per-shift order list (completed/void/cancelled), edit shift fields (end balance, notes), archive or delete shifts
+- Cashier "My Sales Summary" button: date-picker, daily stats, full order list with void action, A4 print via window.open() (avoids 58mm thermal print CSS conflict)
+- Sales orders carry `status` (completed/void/cancelled) and `void_reason` in DB
 
 ## Development Notes
 - `next.config.mjs` overrides `NEXTAUTH_URL` with `REPLIT_DEV_DOMAIN` when on Replit

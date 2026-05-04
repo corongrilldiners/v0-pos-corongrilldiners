@@ -1,0 +1,53 @@
+import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import pool from "@/lib/db"
+
+export async function GET(request: Request) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const { searchParams } = new URL(request.url)
+  const date = searchParams.get("date") || new Date().toLocaleDateString("en-CA")
+  const username = (session.user as any).username ?? session.user.name
+
+  try {
+    const statsResult = await pool.query(
+      `SELECT
+         status,
+         COUNT(*)::int AS count,
+         COALESCE(SUM(grand_total), 0)::float AS total
+       FROM public.sales
+       WHERE (created_by = $1 OR server_name = $1)
+         AND DATE(created_at AT TIME ZONE 'Asia/Manila') = $2::date
+       GROUP BY status
+       ORDER BY status`,
+      [username, date]
+    )
+
+    const ordersResult = await pool.query(
+      `SELECT
+         id, order_number, items,
+         subtotal::float, service_charge::float, grand_total::float,
+         payment_method, server_name, created_by,
+         status, void_reason, created_at
+       FROM public.sales
+       WHERE (created_by = $1 OR server_name = $1)
+         AND DATE(created_at AT TIME ZONE 'Asia/Manila') = $2::date
+       ORDER BY created_at DESC`,
+      [username, date]
+    )
+
+    return NextResponse.json({
+      date,
+      cashier: username,
+      stats: statsResult.rows,
+      orders: ordersResult.rows,
+    })
+  } catch (error) {
+    console.error("Failed to fetch my sales:", error)
+    return NextResponse.json({ error: "Failed to fetch sales" }, { status: 500 })
+  }
+}

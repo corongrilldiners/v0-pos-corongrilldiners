@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const existing = await pool.query(
       `SELECT
          id, cashier_id, cashier_name, cashier_username,
-         start_time, end_time, status,
+         start_time, end_time, status, archived, notes,
          start_balance::float,
          end_balance::float,
          total_cash_sales::float,
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
        VALUES ($1, $2, $3, $4, 'open')
        RETURNING
          id, cashier_id, cashier_name, cashier_username,
-         start_time, end_time, status,
+         start_time, end_time, status, archived, notes,
          start_balance::float,
          end_balance::float,
          total_cash_sales::float,
@@ -67,12 +67,16 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const date = searchParams.get("date") || new Date().toLocaleDateString("en-CA")
+  const includeArchived = searchParams.get("include_archived") === "true"
   const limit = parseInt(searchParams.get("limit") || "50")
 
   try {
     const result = await pool.query(
       `SELECT
-         s.*,
+         s.id, s.cashier_id, s.cashier_name, s.cashier_username,
+         s.start_time, s.end_time, s.status,
+         COALESCE(s.archived, false) AS archived,
+         s.notes,
          s.start_balance::float,
          s.end_balance::float,
          s.total_cash_sales::float,
@@ -81,9 +85,10 @@ export async function GET(request: Request) {
          s.discrepancy::float
        FROM public.shifts s
        WHERE DATE(s.start_time AT TIME ZONE 'Asia/Manila') = $1
+         AND ($2 = true OR COALESCE(s.archived, false) = false)
        ORDER BY s.start_time DESC
-       LIMIT $2`,
-      [date, limit]
+       LIMIT $3`,
+      [date, includeArchived, limit]
     )
 
     return NextResponse.json({ shifts: result.rows, date })

@@ -8,6 +8,7 @@ import {
   LogOut, RefreshCw, TrendingUp, ShoppingBag, Wallet, CreditCard,
   CheckCircle, AlertTriangle, Lock, Plus, Pencil, Trash2,
   Eye, EyeOff, X, Save, KeyRound, History, UserPlus, KeySquare, UserX, UserCog,
+  Archive, ArchiveRestore, ChevronDown, ChevronUp, FileText, Loader2, Ban,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -37,9 +38,17 @@ interface SalesData { date: string; stats: DailyStats; paymentBreakdown: Payment
 interface ShiftRecord {
   id: number; cashier_name: string; cashier_username: string
   start_time: string; end_time: string | null; status: "open" | "closed"
+  archived: boolean; notes: string | null
   start_balance: number; end_balance: number | null
   total_cash_sales: number; total_sales: number
   expected_cash: number | null; discrepancy: number | null
+}
+interface SaleRecord {
+  id: string; order_number: string
+  items: Array<{ name: string; quantity: number; price: number }>
+  subtotal: number; service_charge: number; grand_total: number
+  payment_method: string; server_name: string; created_by: string
+  status: string; void_reason: string | null; created_at: string
 }
 interface Product {
   id: number; name: string; price: number; category: string
@@ -92,11 +101,11 @@ export default function AdminPage() {
   const [activeSection, setActiveSection] = useState<Section>("dashboard")
   const [selectedDate, setSelectedDate] = useState(new Date().toLocaleDateString("en-CA"))
   const [salesData, setSalesData] = useState<SalesData | null>(null)
-  const [shifts, setShifts] = useState<ShiftRecord[]>([])
   const [staff, setStaff] = useState<StaffUser[]>([])
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [changePasswordOpen, setChangePasswordOpen] = useState(false)
+  const [shiftsKey, setShiftsKey] = useState(0)
 
   const isAdmin = session?.user?.role === "admin"
 
@@ -105,11 +114,6 @@ export default function AdminPage() {
   const fetchSales = useCallback(async (date: string) => {
     const res = await fetch(`/api/sales?date=${date}`)
     if (res.ok) setSalesData(await res.json())
-  }, [])
-
-  const fetchShifts = useCallback(async (date: string) => {
-    const res = await fetch(`/api/shifts?date=${date}`)
-    if (res.ok) { const j = await res.json(); setShifts(j.shifts ?? []) }
   }, [])
 
   const fetchStaff = useCallback(async () => {
@@ -126,13 +130,13 @@ export default function AdminPage() {
     setIsLoading(true)
     try {
       if (activeSection === "dashboard") await fetchSales(selectedDate)
-      else if (activeSection === "shifts") await fetchShifts(selectedDate)
+      else if (activeSection === "shifts") setShiftsKey(k => k + 1)
       else if (activeSection === "staff") await fetchStaff()
       else if (activeSection === "activity") await fetchAuditLog()
     } finally {
       setIsLoading(false)
     }
-  }, [activeSection, selectedDate, fetchSales, fetchShifts, fetchStaff, fetchAuditLog])
+  }, [activeSection, selectedDate, fetchSales, fetchStaff, fetchAuditLog])
 
   useEffect(() => {
     if (status === "authenticated" && isAdmin && activeSection !== "menu") refreshCurrent()
@@ -272,7 +276,7 @@ export default function AdminPage() {
           ) : activeSection === "dashboard" ? (
             <DashboardSection data={salesData} selectedDate={selectedDate} />
           ) : activeSection === "shifts" ? (
-            <ShiftsSection shifts={shifts} selectedDate={selectedDate} />
+            <ShiftsSection key={`${selectedDate}-${shiftsKey}`} selectedDate={selectedDate} />
           ) : activeSection === "activity" ? (
             <AuditLogSection entries={auditLog} />
           ) : (
@@ -365,83 +369,415 @@ function DashboardSection({ data, selectedDate }: { data: SalesData | null; sele
 
 // ─── Shifts Section ───────────────────────────────────────────────────────────
 
-function ShiftsSection({ shifts, selectedDate }: { shifts: ShiftRecord[]; selectedDate: string }) {
-  const isToday = selectedDate === new Date().toLocaleDateString("en-CA")
+function OrderStatusBadge({ status }: { status: string }) {
+  if (status === "completed") return (
+    <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">
+      <CheckCircle className="h-2.5 w-2.5" />Done
+    </span>
+  )
+  if (status === "void") return (
+    <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+      <X className="h-2.5 w-2.5" />Void
+    </span>
+  )
   return (
-    <div className="bg-white rounded-xl border shadow-sm">
-      <div className="p-5 border-b flex items-center justify-between">
-        <h2 className="font-semibold">Shift Records — {isToday ? "Today" : selectedDate}</h2>
-        <span className="text-sm text-muted-foreground">{shifts.length} shift{shifts.length !== 1 ? "s" : ""}</span>
+    <span className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+      <Ban className="h-2.5 w-2.5" />Cancelled
+    </span>
+  )
+}
+
+function ShiftsSection({ selectedDate }: { selectedDate: string }) {
+  const isToday = selectedDate === new Date().toLocaleDateString("en-CA")
+  const [shifts, setShifts] = useState<ShiftRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showArchived, setShowArchived] = useState(false)
+  const [expandedShiftId, setExpandedShiftId] = useState<number | null>(null)
+  const [shiftOrders, setShiftOrders] = useState<Record<number, SaleRecord[]>>({})
+  const [loadingOrdersFor, setLoadingOrdersFor] = useState<number | null>(null)
+  const [orderFilter, setOrderFilter] = useState<Record<number, string>>({})
+  const [editingShift, setEditingShift] = useState<ShiftRecord | null>(null)
+  const [editNotes, setEditNotes] = useState("")
+  const [editEndBalance, setEditEndBalance] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
+  const [actionError, setActionError] = useState("")
+
+  const fetchShifts = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ date: selectedDate })
+      if (showArchived) params.set("include_archived", "true")
+      const res = await fetch(`/api/shifts?${params}`)
+      if (res.ok) { const j = await res.json(); setShifts(j.shifts ?? []) }
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedDate, showArchived])
+
+  useEffect(() => { fetchShifts() }, [fetchShifts])
+
+  const handleViewOrders = async (shiftId: number) => {
+    if (expandedShiftId === shiftId) { setExpandedShiftId(null); return }
+    setExpandedShiftId(shiftId)
+    if (shiftOrders[shiftId] !== undefined) return
+    setLoadingOrdersFor(shiftId)
+    try {
+      const res = await fetch(`/api/shifts/${shiftId}/sales`)
+      if (res.ok) {
+        const j = await res.json()
+        setShiftOrders(prev => ({ ...prev, [shiftId]: j.sales ?? [] }))
+      }
+    } finally {
+      setLoadingOrdersFor(null)
+    }
+  }
+
+  const handleArchive = async (shift: ShiftRecord) => {
+    const res = await fetch(`/api/shifts/${shift.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived: !shift.archived }),
+    })
+    if (res.ok) fetchShifts()
+    else setActionError("Failed to update shift.")
+  }
+
+  const handleDelete = async (shift: ShiftRecord) => {
+    if (!confirm(`Delete shift for ${shift.cashier_name}? This cannot be undone.`)) return
+    const res = await fetch(`/api/shifts/${shift.id}`, { method: "DELETE" })
+    if (res.ok) {
+      fetchShifts()
+      if (expandedShiftId === shift.id) setExpandedShiftId(null)
+    } else {
+      setActionError("Failed to delete shift.")
+    }
+  }
+
+  const openEdit = (shift: ShiftRecord) => {
+    setEditingShift(shift)
+    setEditNotes(shift.notes ?? "")
+    setEditEndBalance(shift.end_balance !== null ? String(shift.end_balance) : "")
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingShift) return
+    setEditSaving(true)
+    const body: Record<string, unknown> = { notes: editNotes }
+    if (editEndBalance !== "") body.end_balance = parseFloat(editEndBalance)
+    const res = await fetch(`/api/shifts/${editingShift.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+    setEditSaving(false)
+    if (res.ok) { setEditingShift(null); fetchShifts() }
+    else setActionError("Failed to save changes.")
+  }
+
+  const getFilter = (shiftId: number) => orderFilter[shiftId] ?? "all"
+  const setFilter = (shiftId: number, f: string) =>
+    setOrderFilter(prev => ({ ...prev, [shiftId]: f }))
+
+  const getFilteredOrders = (shiftId: number) => {
+    const orders = shiftOrders[shiftId] ?? []
+    const f = getFilter(shiftId)
+    return f === "all" ? orders : orders.filter(o => o.status === f)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
-      {shifts.length === 0 ? (
-        <EmptyState icon={Clock} message="No shifts recorded for this date." />
-      ) : (
-        <div className="divide-y">
-          {shifts.map((shift) => {
-            const disc = shift.discrepancy ?? 0
-            const isOpen = shift.status === "open"
-            const isOver = !isOpen && disc > 0
-            const isShort = !isOpen && disc < 0
-            const isExact = !isOpen && disc === 0
-            return (
-              <div key={shift.id} className="p-4 hover:bg-gray-50">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-semibold">{shift.cashier_name}</span>
-                      <span className="text-xs text-muted-foreground">@{shift.cashier_username}</span>
-                      {isOpen ? (
-                        <Badge className="text-[10px] h-4 px-1.5 bg-green-100 text-green-700 border-0">
-                          <Clock className="h-2.5 w-2.5 mr-0.5" />Active
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Closed</Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {fmtTime(shift.start_time)}
-                      {shift.end_time ? ` → ${fmtTime(shift.end_time)}` : " (ongoing)"}
-                    </p>
-                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-xs">
-                      <div>
-                        <span className="text-muted-foreground block">Starting Cash</span>
-                        <span className="font-mono font-medium">{fmt(shift.start_balance)}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground block">Cash Sales</span>
-                        <span className="font-mono font-medium text-green-600">+{fmt(shift.total_cash_sales)}</span>
-                      </div>
-                      {!isOpen && (
-                        <>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {actionError && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-lg text-sm">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />{actionError}
+          <button className="ml-auto text-red-400 hover:text-red-600" onClick={() => setActionError("")}>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border shadow-sm">
+        <div className="p-5 border-b flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="font-semibold">Shift Records — {isToday ? "Today" : selectedDate}</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{shifts.length} shift{shifts.length !== 1 ? "s" : ""}</p>
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="h-4 w-4 rounded"
+            />
+            Show Archived
+          </label>
+        </div>
+
+        {shifts.length === 0 ? (
+          <EmptyState icon={Clock} message="No shifts recorded for this date." />
+        ) : (
+          <div className="divide-y">
+            {shifts.map((shift) => {
+              const disc = shift.discrepancy ?? 0
+              const isOpen = shift.status === "open"
+              const isOver = !isOpen && disc > 0
+              const isShort = !isOpen && disc < 0
+              const isExact = !isOpen && disc === 0
+              const isExpanded = expandedShiftId === shift.id
+              const orders = shiftOrders[shift.id]
+              const filter = getFilter(shift.id)
+
+              return (
+                <div key={shift.id} className={shift.archived ? "opacity-60" : ""}>
+                  {/* Shift row */}
+                  <div className="p-4 hover:bg-gray-50/80">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-semibold">{shift.cashier_name}</span>
+                          <span className="text-xs text-muted-foreground">@{shift.cashier_username}</span>
+                          {isOpen ? (
+                            <Badge className="text-[10px] h-4 px-1.5 bg-green-100 text-green-700 border-0">
+                              <Clock className="h-2.5 w-2.5 mr-0.5" />Active
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] h-4 px-1.5">Closed</Badge>
+                          )}
+                          {shift.archived && (
+                            <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-yellow-50 text-yellow-700 border-0">
+                              Archived
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {fmtTime(shift.start_time)}
+                          {shift.end_time ? ` → ${fmtTime(shift.end_time)}` : " (ongoing)"}
+                        </p>
+                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-xs">
                           <div>
-                            <span className="text-muted-foreground block">Expected</span>
-                            <span className="font-mono font-medium">{fmt(shift.expected_cash ?? 0)}</span>
+                            <span className="text-muted-foreground block">Starting Cash</span>
+                            <span className="font-mono font-medium">{fmt(shift.start_balance)}</span>
                           </div>
                           <div>
-                            <span className="text-muted-foreground block">Actual</span>
-                            <span className="font-mono font-medium">{fmt(shift.end_balance ?? 0)}</span>
+                            <span className="text-muted-foreground block">Cash Sales</span>
+                            <span className="font-mono font-medium text-green-600">+{fmt(shift.total_cash_sales)}</span>
+                          </div>
+                          {!isOpen && (
+                            <>
+                              <div>
+                                <span className="text-muted-foreground block">Expected</span>
+                                <span className="font-mono font-medium">{fmt(shift.expected_cash ?? 0)}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block">Actual</span>
+                                <span className="font-mono font-medium">{fmt(shift.end_balance ?? 0)}</span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                        {shift.notes && (
+                          <p className="mt-2 text-xs text-muted-foreground bg-gray-50 rounded px-2 py-1 italic flex items-center gap-1">
+                            <FileText className="h-3 w-3 flex-shrink-0" />{shift.notes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        <p className="text-xs text-muted-foreground mb-1">Total Sales</p>
+                        <p className="font-bold text-base">{fmt(shift.total_sales)}</p>
+                        {!isOpen && (
+                          <div className={`mt-2 rounded-md px-2.5 py-1 text-xs font-semibold ${isExact ? "bg-green-50 text-green-700" : isOver ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-700"}`}>
+                            <div className="flex items-center gap-1 justify-end">
+                              {isExact ? <CheckCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+                              <span>{isExact ? "Balanced" : isOver ? "Over" : "Short"}</span>
+                            </div>
+                            <span className="font-mono">{disc >= 0 ? "+" : ""}{fmt(disc)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="mt-3 flex items-center gap-2 flex-wrap">
+                      <Button
+                        variant="outline" size="sm" className="h-7 text-xs gap-1.5"
+                        onClick={() => handleViewOrders(shift.id)}
+                      >
+                        {isExpanded
+                          ? <><ChevronUp className="h-3.5 w-3.5" />Hide Orders</>
+                          : <><ChevronDown className="h-3.5 w-3.5" />View Orders{orders !== undefined ? ` (${orders.length})` : ""}</>
+                        }
+                      </Button>
+                      <Button
+                        variant="outline" size="sm" className="h-7 text-xs gap-1.5"
+                        onClick={() => openEdit(shift)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />Edit
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className={`h-7 text-xs gap-1.5 ${shift.archived ? "text-yellow-700 border-yellow-300 hover:bg-yellow-50" : "text-gray-600"}`}
+                        onClick={() => handleArchive(shift)}
+                      >
+                        {shift.archived
+                          ? <><ArchiveRestore className="h-3.5 w-3.5" />Unarchive</>
+                          : <><Archive className="h-3.5 w-3.5" />Archive</>
+                        }
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        className="h-7 text-xs gap-1.5 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                        onClick={() => handleDelete(shift)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />Delete
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Expanded orders panel */}
+                  {isExpanded && (
+                    <div className="border-t bg-gray-50/60 px-4 py-3">
+                      {loadingOrdersFor === shift.id ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        </div>
+                      ) : !orders || orders.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">
+                          No orders found for this shift.
+                        </p>
+                      ) : (
+                        <>
+                          {/* Filter tabs */}
+                          <div className="flex gap-2 mb-3 flex-wrap">
+                            {["all", "completed", "void", "cancelled"].map((f) => {
+                              const count = f === "all" ? orders.length : orders.filter(o => o.status === f).length
+                              return (
+                                <button
+                                  key={f}
+                                  onClick={() => setFilter(shift.id, f)}
+                                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                                    filter === f
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-white border text-gray-600 hover:bg-gray-100"
+                                  }`}
+                                >
+                                  {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)} ({count})
+                                </button>
+                              )
+                            })}
+                          </div>
+
+                          {/* Order rows */}
+                          <div className="space-y-1.5">
+                            {getFilteredOrders(shift.id).length === 0 ? (
+                              <p className="text-xs text-muted-foreground text-center py-4">No {filter} orders.</p>
+                            ) : getFilteredOrders(shift.id).map((order) => (
+                              <div
+                                key={order.id}
+                                className={`flex items-center gap-3 bg-white rounded-lg px-3 py-2 border text-xs ${order.status !== "completed" ? "opacity-60" : ""}`}
+                              >
+                                <span className="text-muted-foreground flex-shrink-0 w-14">
+                                  {new Date(order.created_at).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", hour12: true })}
+                                </span>
+                                <span className="font-mono font-semibold flex-shrink-0">{order.order_number}</span>
+                                <span className="flex-shrink-0 capitalize text-muted-foreground">
+                                  <PaymentIcon method={order.payment_method} />{order.payment_method}
+                                </span>
+                                <span className="flex-1 text-muted-foreground truncate">
+                                  {(order.items as any[])?.map((it: any) => `${it.quantity}× ${it.name}`).join(", ")}
+                                </span>
+                                <span className="font-mono font-semibold flex-shrink-0">{fmt(order.grand_total)}</span>
+                                <OrderStatusBadge status={order.status} />
+                                {order.void_reason && (
+                                  <span className="text-muted-foreground italic truncate max-w-[120px]" title={order.void_reason}>
+                                    "{order.void_reason}"
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Footer summary */}
+                          <div className="mt-3 pt-3 border-t flex gap-4 text-xs text-muted-foreground flex-wrap">
+                            <span>Completed: <strong className="text-foreground">{orders.filter(o => o.status === "completed").length}</strong></span>
+                            <span>Void: <strong className="text-foreground">{orders.filter(o => o.status === "void").length}</strong></span>
+                            <span>Cancelled: <strong className="text-foreground">{orders.filter(o => o.status === "cancelled").length}</strong></span>
+                            <span className="ml-auto">
+                              Revenue: <strong className="text-foreground font-mono">
+                                {fmt(orders.filter(o => o.status === "completed").reduce((s, o) => s + o.grand_total, 0))}
+                              </strong>
+                            </span>
                           </div>
                         </>
                       )}
                     </div>
-                  </div>
-                  <div className="flex-shrink-0 text-right">
-                    <p className="text-xs text-muted-foreground mb-1">Total Sales</p>
-                    <p className="font-bold text-base">{fmt(shift.total_sales)}</p>
-                    {!isOpen && (
-                      <div className={`mt-2 rounded-md px-2.5 py-1 text-xs font-semibold ${isExact ? "bg-green-50 text-green-700" : isOver ? "bg-blue-50 text-blue-700" : "bg-red-50 text-red-700"}`}>
-                        <div className="flex items-center gap-1 justify-end">
-                          {isExact ? <CheckCircle className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
-                          <span>{isExact ? "Balanced" : isOver ? "Over" : "Short"}</span>
-                        </div>
-                        <span className="font-mono">{disc >= 0 ? "+" : ""}{fmt(disc)}</span>
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Edit Shift Modal */}
+      {editingShift && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setEditingShift(null)} />
+          <div className="relative z-10 w-full max-w-sm bg-white rounded-xl shadow-xl p-6 mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold">Edit Shift</h2>
+                <p className="text-xs text-muted-foreground">
+                  {editingShift.cashier_name} · {fmtTime(editingShift.start_time)}
+                </p>
               </div>
-            )
-          })}
+              <Button variant="ghost" size="icon" onClick={() => setEditingShift(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="space-y-4">
+              {editingShift.status === "closed" && (
+                <div className="space-y-1.5">
+                  <Label>Actual Cash Correction (End Balance)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editEndBalance}
+                    onChange={(e) => setEditEndBalance(e.target.value)}
+                    placeholder={editingShift.end_balance !== null ? String(editingShift.end_balance) : "Enter corrected amount"}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Current: {editingShift.end_balance !== null ? fmt(editingShift.end_balance) : "not set"}. Leave blank to keep unchanged.
+                  </p>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label>Notes</Label>
+                <textarea
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Add notes about this shift..."
+                  rows={3}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button variant="outline" className="flex-1" onClick={() => setEditingShift(null)}>Cancel</Button>
+                <Button className="flex-1 gap-2" onClick={handleSaveEdit} disabled={editSaving}>
+                  {editSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

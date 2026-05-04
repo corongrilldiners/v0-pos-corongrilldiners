@@ -27,9 +27,9 @@ export async function POST(request: Request) {
 
     const result = await pool.query(
       `INSERT INTO public.sales
-        (order_number, items, subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       RETURNING id, order_number, grand_total, created_at`,
+        (order_number, items, subtotal, service_charge, grand_total, payment_method, amount_tendered, change_amount, server_name, created_by, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'completed')
+       RETURNING id, order_number, grand_total, status, created_at`,
       [
         orderNumber,
         JSON.stringify(items),
@@ -64,6 +64,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const date = searchParams.get("date") || new Date().toISOString().split("T")[0]
 
+    // Only count completed orders in stats
     const dailyStats = await pool.query(
       `SELECT
          COUNT(*)::int AS total_orders,
@@ -71,7 +72,8 @@ export async function GET(request: Request) {
          COALESCE(SUM(subtotal), 0)::float AS total_subtotal,
          COALESCE(SUM(service_charge), 0)::float AS total_service_charge
        FROM public.sales
-       WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1`,
+       WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1
+         AND COALESCE(status, 'completed') = 'completed'`,
       [date]
     )
 
@@ -82,6 +84,7 @@ export async function GET(request: Request) {
          COALESCE(SUM(grand_total), 0)::float AS total
        FROM public.sales
        WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1
+         AND COALESCE(status, 'completed') = 'completed'
        GROUP BY payment_method
        ORDER BY total DESC`,
       [date]
@@ -98,6 +101,8 @@ export async function GET(request: Request) {
          payment_method,
          server_name,
          created_by,
+         COALESCE(status, 'completed') AS status,
+         void_reason,
          created_at
        FROM public.sales
        WHERE DATE(created_at AT TIME ZONE 'Asia/Manila') = $1
