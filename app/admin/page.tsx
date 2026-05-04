@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Image from "next/image"
 import { useProducts } from "../context/product-context"
+import ChangePasswordDialog from "@/components/change-password-dialog"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,7 @@ export default function AdminPage() {
   const [shifts, setShifts] = useState<ShiftRecord[]>([])
   const [staff, setStaff] = useState<StaffUser[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false)
 
   const isAdmin = session?.user?.role === "admin"
 
@@ -197,6 +199,13 @@ export default function AdminPage() {
             <p className="text-[10px] text-muted-foreground">Administrator</p>
           </div>
           <button
+            onClick={() => setChangePasswordOpen(true)}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors"
+          >
+            <KeyRound className="h-4 w-4" />
+            Change Password
+          </button>
+          <button
             onClick={() => signOut({ callbackUrl: "/login" })}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors"
           >
@@ -250,6 +259,8 @@ export default function AdminPage() {
           )}
         </div>
       </div>
+
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </div>
   )
 }
