@@ -36,7 +36,9 @@ import {
   User,
   Clock,
   DoorOpen,
+  KeyRound,
 } from "lucide-react"
+import ChangePasswordDialog from "./change-password-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -86,6 +88,8 @@ export default function CategorySidebar({
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
   const [editingCategoryName, setEditingCategoryName] = useState("")
+
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false)
 
   const isAdmin = session?.user?.role === "admin"
   const userName = session?.user?.name ?? "Staff"
@@ -352,8 +356,17 @@ export default function CategorySidebar({
         </div>
       </div>
 
-      {/* Sign Out */}
-      <div className="p-3 border-t">
+      {/* Sign Out + Change Password */}
+      <div className="p-3 border-t space-y-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-xs gap-2 h-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+          onClick={() => setIsChangePasswordOpen(true)}
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Change Password
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -364,6 +377,11 @@ export default function CategorySidebar({
           Sign Out
         </Button>
       </div>
+
+      <ChangePasswordDialog
+        open={isChangePasswordOpen}
+        onOpenChange={setIsChangePasswordOpen}
+      />
     </div>
   )
 }
