@@ -11,6 +11,14 @@ function pgErrorCode(err: unknown): string | undefined {
   return undefined
 }
 
+function validatePasswordStrength(pw: string): string | null {
+  if (pw.length < 8)          return "Password must be at least 8 characters."
+  if (!/[A-Z]/.test(pw))      return "Password must contain at least one uppercase letter."
+  if (!/[0-9]/.test(pw))      return "Password must contain at least one number."
+  if (!/[^A-Za-z0-9]/.test(pw)) return "Password must contain at least one special character."
+  return null
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user || session.user.role !== "admin") {
@@ -42,6 +50,11 @@ export async function POST(request: Request) {
         { error: "Username, name, and password are required" },
         { status: 400 }
       )
+    }
+
+    const strengthError = validatePasswordStrength(password)
+    if (strengthError) {
+      return NextResponse.json({ error: strengthError }, { status: 400 })
     }
 
     const allowedRole = role === "admin" ? "admin" : "cashier"
@@ -79,6 +92,10 @@ export async function PUT(request: Request) {
 
     let result
     if (password && password.trim()) {
+      const strengthError = validatePasswordStrength(password.trim())
+      if (strengthError) {
+        return NextResponse.json({ error: strengthError }, { status: 400 })
+      }
       const passwordHash = await bcrypt.hash(password.trim(), 12)
       result = await pool.query(
         `UPDATE public.users

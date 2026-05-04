@@ -836,7 +836,58 @@ function StaffSection({ staff, onRefresh }: { staff: StaffUser[]; onRefresh: () 
   )
 }
 
-// ─── Reset Password Modal ─────────────────────────────────────────────────────
+// ─── Password strength helpers + Reset Password Modal ─────────────────────────
+
+interface PasswordCriteria {
+  label: string
+  met: boolean
+}
+
+function getPasswordCriteria(pw: string): PasswordCriteria[] {
+  return [
+    { label: "At least 8 characters",  met: pw.length >= 8 },
+    { label: "One uppercase letter",   met: /[A-Z]/.test(pw) },
+    { label: "One number",             met: /[0-9]/.test(pw) },
+    { label: "One special character",  met: /[^A-Za-z0-9]/.test(pw) },
+  ]
+}
+
+function getStrengthScore(pw: string): number {
+  return getPasswordCriteria(pw).filter((c) => c.met).length
+}
+
+const STRENGTH_LABELS = ["", "Weak", "Fair", "Good", "Strong"]
+const STRENGTH_COLORS = ["", "bg-red-500", "bg-orange-400", "bg-yellow-400", "bg-green-500"]
+const STRENGTH_TEXT   = ["", "text-red-600", "text-orange-500", "text-yellow-600", "text-green-600"]
+
+function PasswordStrengthMeter({ password }: { password: string }) {
+  if (!password) return null
+  const score = getStrengthScore(password)
+  const criteria = getPasswordCriteria(password)
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex gap-1">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className={`h-1.5 flex-1 rounded-full transition-colors ${i <= score ? STRENGTH_COLORS[score] : "bg-gray-200"}`}
+          />
+        ))}
+      </div>
+      <p className={`text-xs font-medium ${score === 4 ? "text-green-600" : STRENGTH_TEXT[score] || "text-gray-500"}`}>
+        {score === 4 ? "Strong — all requirements met" : STRENGTH_LABELS[score] || "Very Weak"}
+      </p>
+      <ul className="space-y-0.5">
+        {criteria.map((c) => (
+          <li key={c.label} className={`flex items-center gap-1.5 text-xs ${c.met ? "text-green-600" : "text-muted-foreground"}`}>
+            <CheckCircle className={`h-3 w-3 flex-shrink-0 ${c.met ? "text-green-500" : "text-gray-300"}`} />
+            {c.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 function ResetPasswordModal({
   user, saving, onSave, onClose,
@@ -851,11 +902,14 @@ function ResetPasswordModal({
   const [showPw, setShowPw] = useState(false)
   const [validationError, setValidationError] = useState("")
 
+  const score = getStrengthScore(password)
+  const isStrong = score === 4
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setValidationError("")
-    if (password.trim().length < 6) {
-      setValidationError("Password must be at least 6 characters.")
+    if (!isStrong) {
+      setValidationError("Password does not meet all strength requirements.")
       return
     }
     if (password !== confirm) {
@@ -902,6 +956,7 @@ function ResetPasswordModal({
                 {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            <PasswordStrengthMeter password={password} />
           </div>
           <div className="space-y-1.5">
             <Label>Confirm New Password</Label>
@@ -915,7 +970,7 @@ function ResetPasswordModal({
           </div>
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button type="submit" disabled={saving} className="flex-1 gap-2">
+            <Button type="submit" disabled={saving || !isStrong} className="flex-1 gap-2">
               {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
               Reset Password
             </Button>
@@ -943,9 +998,14 @@ function StaffFormModal({
   const [role, setRole] = useState(user?.role ?? "cashier")
   const [showPw, setShowPw] = useState(false)
 
+  const score = getStrengthScore(password)
+  const isStrong = score === 4
+  const passwordEntered = password.trim().length > 0
+  const canSubmit = isEdit ? (!passwordEntered || isStrong) : isStrong
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isEdit && !password.trim()) return
+    if (!canSubmit) return
     onSave({ username, name, password, role })
   }
 
@@ -998,6 +1058,7 @@ function StaffFormModal({
                 {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
+            {passwordEntered && <PasswordStrengthMeter password={password} />}
           </div>
           {!isEdit && (
             <div className="space-y-1.5">
@@ -1013,7 +1074,7 @@ function StaffFormModal({
           )}
           <div className="flex gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button type="submit" disabled={saving} className="flex-1 gap-2">
+            <Button type="submit" disabled={saving || !canSubmit} className="flex-1 gap-2">
               {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {isEdit ? "Save Changes" : "Create Account"}
             </Button>
