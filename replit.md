@@ -23,7 +23,6 @@ Production-ready Next.js 15 Point-of-Sale application for **Coron Grill Diners**
 - Uses `ssl: { rejectUnauthorized: false }` for all Supabase connections.
 - **Known issue**: Supabase free-tier projects auto-pause after 7 days of inactivity. If login fails with "ENOTFOUND tenant/user …" errors, unpause the project in the Supabase dashboard.
 - After unpausing, run `scripts/fix-db.sql` in the Supabase SQL Editor to fix RLS + reseed passwords.
-- OR call the temporary endpoint: `GET /api/internal/fix-db?secret=<NEXTAUTH_SECRET>` (remove the file after use).
 
 ### Tables (public schema)
 - **`public.users`** — staff accounts: `id, username, name, password_hash, role` — RLS disabled (no RLS needed for internal staff table)
@@ -105,8 +104,6 @@ app/api/
   shifts/route.ts              — GET shifts by date (admin)
   shifts/current/route.ts      — GET/PATCH current open shift
   users/route.ts               — GET/POST/PUT/DELETE (admin only — full staff CRUD)
-  internal/fix-db/route.ts     — One-time DB fix endpoint (delete after use)
-
 scripts/
   fix-db.sql           — SQL to run in Supabase Dashboard (RLS fix + password reseed)
   seed_supabase.js     — Seeds all users, categories, products
