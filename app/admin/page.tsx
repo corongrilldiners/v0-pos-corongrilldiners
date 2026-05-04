@@ -420,6 +420,7 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
   const [actionError, setActionError] = useState("")
   const [summaryShift, setSummaryShift] = useState<ShiftRecord | null>(null)
   const [summaryOpen, setSummaryOpen] = useState(false)
+  const [summaryLoading, setSummaryLoading] = useState<number | null>(null)
 
   const fetchShifts = useCallback(async () => {
     setLoading(true)
@@ -459,9 +460,11 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
   }
 
   const handleOpenSummary = async (shift: ShiftRecord) => {
+    setSummaryLoading(shift.id)
+    await fetchShiftOrders(shift.id)
+    setSummaryLoading(null)
     setSummaryShift(shift)
     setSummaryOpen(true)
-    await fetchShiftOrders(shift.id)
   }
 
   const handleArchive = async (shift: ShiftRecord) => {
@@ -638,10 +641,15 @@ function ShiftsSection({ selectedDate }: { selectedDate: string }) {
                     {/* Action buttons */}
                     <div className="mt-3 flex items-center gap-2 flex-wrap">
                       <Button
-                        variant="outline" size="sm" className="h-7 text-xs gap-1.5 bg-primary/5 border-primary/30 hover:bg-primary/10 text-primary font-semibold"
+                        variant="outline" size="sm"
+                        className="h-7 text-xs gap-1.5 bg-primary/5 border-primary/30 hover:bg-primary/10 text-primary font-semibold"
                         onClick={() => handleOpenSummary(shift)}
+                        disabled={summaryLoading === shift.id}
                       >
-                        <FileText className="h-3.5 w-3.5" />Full Summary
+                        {summaryLoading === shift.id
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Loading…</>
+                          : <><FileText className="h-3.5 w-3.5" />Full Summary</>
+                        }
                       </Button>
                       <Button
                         variant="outline" size="sm" className="h-7 text-xs gap-1.5"

@@ -230,8 +230,7 @@ async function downloadExcel(shift: ShiftRecord, sales: SaleRecord[]) {
 async function downloadDocx(shift: ShiftRecord, sales: SaleRecord[]) {
   const {
     Document, Packer, Paragraph, Table, TableRow, TableCell,
-    WidthType, TextRun, HeadingLevel, AlignmentType, BorderStyle,
-    ShadingType,
+    WidthType, TextRun, HeadingLevel, AlignmentType, ShadingType,
   } = await import("docx")
 
   const disc = shift.discrepancy ?? 0
@@ -245,13 +244,11 @@ async function downloadDocx(shift: ShiftRecord, sales: SaleRecord[]) {
 
   const bold = (text: string) => new TextRun({ text, bold: true })
   const normal = (text: string) => new TextRun({ text })
-  const mono = (text: string) => new TextRun({ text, font: "Courier New" })
 
-  const cell = (text: string, opts: { bold?: boolean; shade?: boolean; right?: boolean } = {}) =>
+  const cell = (text: string, opts: { bold?: boolean; shade?: boolean } = {}) =>
     new TableCell({
       children: [new Paragraph({
-        children: [new TextRun({ text, bold: opts.bold, font: opts.bold ? undefined : undefined })],
-        alignment: opts.right ? AlignmentType.RIGHT : AlignmentType.LEFT,
+        children: [new TextRun({ text, bold: opts.bold })],
       })],
       shading: opts.shade ? { type: ShadingType.CLEAR, fill: "E8E8E8" } : undefined,
       margins: { top: 60, bottom: 60, left: 100, right: 100 },
