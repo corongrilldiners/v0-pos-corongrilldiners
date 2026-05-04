@@ -1,4 +1,5 @@
-import type { NextAuthOptions } from "next-auth"
+import type { NextAuthOptions, User } from "next-auth"
+import type { JWT } from "next-auth/jwt"
 import CredentialsProvider from "next-auth/providers/credentials"
 import pool from "@/lib/db"
 import bcrypt from "bcryptjs"
@@ -11,7 +12,7 @@ export const authOptions: NextAuthOptions = {
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials): Promise<User | null> {
         if (!credentials?.username || !credentials?.password) return null
 
         try {
@@ -20,20 +21,20 @@ export const authOptions: NextAuthOptions = {
             [credentials.username]
           )
 
-          const user = result.rows[0]
-          if (!user) return null
+          const row = result.rows[0]
+          if (!row) return null
 
           const passwordMatch = await bcrypt.compare(
             credentials.password,
-            user.password_hash
+            row.password_hash
           )
           if (!passwordMatch) return null
 
           return {
-            id: user.id.toString(),
-            name: user.name,
-            username: user.username,
-            role: user.role,
+            id: row.id.toString(),
+            name: row.name,
+            username: row.username,
+            role: row.role,
           }
         } catch (error) {
           console.error("Auth error:", error)
@@ -43,19 +44,19 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: JWT; user?: User }) {
       if (user) {
-        token.role = (user as any).role
-        token.id = user.id as string
-        token.username = (user as any).username
+        token.role = user.role
+        token.id = user.id
+        token.username = user.username
       }
       return token
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: JWT }) {
       if (session.user) {
         session.user.role = token.role
-        session.user.id = token.id as string
-        ;(session.user as any).username = token.username
+        session.user.id = token.id
+        session.user.username = token.username
       }
       return session
     },
