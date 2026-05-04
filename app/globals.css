@@ -100,47 +100,71 @@
   }
 }
 
-/* Thermal Receipt Print Styles */
+/* ── Thermal Print Styles — XP-58H 58mm ─────────────────────────────────────── */
 @media print {
-  /* Hide everything except the receipt */
+  /* Hide everything on the page except the active print target */
   body * {
     visibility: hidden;
   }
-  
+
+  /* Customer receipt */
   .thermal-receipt,
   .thermal-receipt * {
     visibility: visible;
   }
-  
+
   .thermal-receipt {
     position: absolute;
     left: 0;
     top: 0;
-    width: 80mm !important;
-    max-width: 80mm !important;
-    padding: 5mm !important;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    padding: 3mm !important;
+    margin: 0 !important;
+    background: white !important;
+    font-family: 'Courier New', Courier, 'Lucida Console', monospace !important;
+    font-size: 9px !important;
+    line-height: 1.3 !important;
+    color: black !important;
+  }
+
+  .thermal-receipt * {
+    box-shadow: none !important;
+  }
+
+  .thermal-receipt img {
+    max-width: 56px !important;
+    height: auto !important;
+  }
+
+  /* Kitchen ticket */
+  .kitchen-ticket,
+  .kitchen-ticket * {
+    visibility: visible;
+  }
+
+  .kitchen-ticket {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    padding: 3mm !important;
     margin: 0 !important;
     background: white !important;
     font-family: 'Courier New', Courier, 'Lucida Console', monospace !important;
     font-size: 10px !important;
-    line-height: 1.3 !important;
+    line-height: 1.4 !important;
     color: black !important;
   }
-  
-  /* Remove shadows, borders for cleaner print */
-  .thermal-receipt * {
+
+  .kitchen-ticket * {
     box-shadow: none !important;
   }
-  
-  /* Page setup for thermal paper */
+
+  /* Page setup — 58mm thermal paper */
   @page {
-    size: 80mm auto;
+    size: 58mm auto;
     margin: 0;
-  }
-  
-  /* Ensure images print */
-  .thermal-receipt img {
-    max-width: 60px !important;
-    height: auto !important;
   }
 }

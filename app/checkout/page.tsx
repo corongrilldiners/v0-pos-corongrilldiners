@@ -3,7 +3,10 @@
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { ArrowLeft, CreditCard, Wallet, Printer, FileText, Loader2 } from "lucide-react"
+import {
+  ArrowLeft, CreditCard, Wallet, Printer, FileText, Loader2,
+  Bluetooth, Usb, ChefHat, Receipt, PrinterCheck,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -18,9 +21,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Badge } from "@/components/ui/badge"
 import { useCart } from "../context/cart-context"
 import ThermalReceipt from "../components/thermal-receipt"
+import KitchenTicket from "../components/kitchen-ticket"
 import { savePendingSale } from "@/hooks/use-offline-sync"
+import { usePrinterStatus } from "@/app/hooks/use-printer-status"
+import { printTo } from "@/lib/printer-connection"
+import { buildCustomerReceipt, buildKitchenTicket, type PrintData } from "@/lib/escpos"
 
 function generateOrderNumber() {
   const random = Math.floor(1000 + Math.random() * 9000)
@@ -40,6 +48,18 @@ function formatDateTime() {
   })
 }
 
+// ─── Printer status badge ──────────────────────────────────────────────────────
+function PrinterBadge({ role }: { role: "cashier" | "kitchen" }) {
+  const st = usePrinterStatus(role)
+  if (!st.connected) return null
+  return (
+    <Badge className="bg-green-100 text-green-700 border-0 text-[10px] gap-1 px-1.5 py-0">
+      {st.type === "usb" ? <Usb className="h-2.5 w-2.5" /> : <Bluetooth className="h-2.5 w-2.5" />}
+      {st.name.length > 18 ? st.name.substring(0, 18) + "…" : st.name}
+    </Badge>
+  )
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const { data: session } = useSession()
@@ -51,17 +71,18 @@ export default function CheckoutPage() {
   const [showSummaryModal, setShowSummaryModal] = useState(false)
   const [orderNumber] = useState(generateOrderNumber())
   const [dateTime] = useState(formatDateTime())
-  const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [printTarget, setPrintTarget] = useState<"receipt" | "kitchen" | null>(null)
   const [cartSnapshot] = useState<typeof cart>(() => [...cart])
   const [cartTotalSnapshot] = useState(() => cartTotal)
   const receiptRef = useRef<HTMLDivElement>(null)
+  const kitchenRef = useRef<HTMLDivElement>(null)
 
-  // Pre-fill server name from session
+  const cashierPrinter = usePrinterStatus("cashier")
+  const kitchenPrinter = usePrinterStatus("kitchen")
+
   useEffect(() => {
-    if (session?.user?.name) {
-      setServerName(session.user.name)
-    }
+    if (session?.user?.name) setServerName(session.user.name)
   }, [session])
 
   const serviceCharge = includeServiceCharge ? cartTotalSnapshot * 0.05 : 0
@@ -77,65 +98,126 @@ export default function CheckoutPage() {
     setShowSummaryModal(true)
   }
 
-  const salePayload = () => ({
+  const printData: PrintData = {
     orderNumber,
-    items: cartSnapshot.map((item) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      quantity: item.quantity,
-    })),
+    dateTime,
+    serverName,
+    paymentMethod,
+    items: cartSnapshot.map(i => ({ id: i.id, name: i.name, price: i.price, quantity: i.quantity })),
     subtotal: cartTotalSnapshot,
     serviceCharge,
     grandTotal,
-    paymentMethod,
     amountTendered: tenderedAmount,
-    changeAmount: change,
-    serverName,
-    createdBy: session?.user?.name ?? serverName,
-  })
+    change,
+    includeServiceCharge,
+  }
 
   const recordSale = async () => {
-    const payload = salePayload()
     try {
       const res = await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          orderNumber,
+          items: printData.items,
+          subtotal: cartTotalSnapshot,
+          serviceCharge,
+          grandTotal,
+          paymentMethod,
+          amountTendered: tenderedAmount,
+          changeAmount: change,
+          serverName,
+          createdBy: session?.user?.name ?? serverName,
+        }),
       })
       if (!res.ok) throw new Error("Server error")
     } catch {
-      savePendingSale(payload)
+      savePendingSale({
+        orderNumber,
+        items: printData.items,
+        subtotal: cartTotalSnapshot,
+        serviceCharge,
+        grandTotal,
+        paymentMethod,
+        amountTendered: tenderedAmount,
+        changeAmount: change,
+        serverName,
+        createdBy: session?.user?.name ?? serverName,
+      })
       console.warn("[CGD POS] Sale saved offline – will sync when online")
     }
   }
 
-  const handleConfirmAndPrint = async () => {
-    setIsSaving(true)
-    await recordSale()
-    setIsSaving(false)
-    window.print()
+  const finishOrder = (delay = 400) => {
     setTimeout(() => {
       clearCart()
       router.push("/")
-    }, 500)
+    }, delay)
+  }
+
+  // ── Print: customer receipt ──────────────────────────────────────────────────
+  const printCustomerReceipt = async () => {
+    const result = await printTo("cashier", buildCustomerReceipt(printData))
+    if (result !== "none") return // Direct ESC/POS print succeeded
+
+    // Fallback: browser print
+    setPrintTarget("receipt")
+    await new Promise(r => setTimeout(r, 100))
+    window.print()
+    setPrintTarget(null)
+  }
+
+  // ── Print: kitchen ticket ────────────────────────────────────────────────────
+  const printKitchenTicket = async () => {
+    const result = await printTo("kitchen", buildKitchenTicket(printData))
+    if (result !== "none") return // Direct ESC/POS print succeeded
+
+    // Fallback: open kitchen-ticket page in new window → auto-prints
+    sessionStorage.setItem("cgd_kitchen_ticket", JSON.stringify({
+      orderNumber: printData.orderNumber,
+      dateTime: printData.dateTime,
+      serverName: printData.serverName,
+      items: printData.items,
+    }))
+    window.open("/kitchen-ticket", "_blank", "width=400,height=600")
+  }
+
+  // ── Main action: save + print both + redirect ────────────────────────────────
+  const handleConfirmAndPrintBoth = async () => {
+    setIsSaving(true)
+    await recordSale()
+    setIsSaving(false)
+    setShowSummaryModal(false)
+
+    await Promise.all([
+      printCustomerReceipt(),
+      printKitchenTicket(),
+    ])
+    finishOrder()
+  }
+
+  const handlePrintReceiptOnly = async () => {
+    setIsSaving(true)
+    await recordSale()
+    setIsSaving(false)
+    setShowSummaryModal(false)
+    await printCustomerReceipt()
+    finishOrder()
+  }
+
+  const handlePrintKitchenOnly = async () => {
+    setIsSaving(true)
+    await recordSale()
+    setIsSaving(false)
+    setShowSummaryModal(false)
+    await printKitchenTicket()
+    finishOrder()
   }
 
   const handleDigitalOnly = async () => {
     await recordSale()
     clearCart()
     router.push("/success")
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center print:hidden">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin mx-auto text-primary" />
-          <p className="mt-4 text-muted-foreground">Loading order details...</p>
-        </div>
-      </div>
-    )
   }
 
   if (cartSnapshot.length === 0) {
@@ -152,6 +234,7 @@ export default function CheckoutPage() {
 
   return (
     <>
+      {/* ── Main checkout page ───────────────────────────────────────────────── */}
       <div className="container mx-auto max-w-4xl py-8 print:hidden">
         <Button variant="ghost" className="mb-6" onClick={() => router.push("/")}>
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -161,6 +244,7 @@ export default function CheckoutPage() {
         <h1 className="mb-6 text-3xl font-bold">Checkout</h1>
 
         <div className="grid gap-8 md:grid-cols-2">
+          {/* Order summary */}
           <div>
             <h2 className="mb-4 text-xl font-semibold">Order Summary</h2>
             <div className="rounded-lg border p-4 bg-white">
@@ -203,6 +287,7 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {/* Payment details */}
           <div>
             <h2 className="mb-4 text-xl font-semibold">Payment Details</h2>
             <div className="rounded-lg border p-4 bg-white space-y-4">
@@ -277,14 +362,16 @@ export default function CheckoutPage() {
         </div>
       </div>
 
+      {/* ── Order confirmation + print modal ─────────────────────────────────── */}
       <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
         <DialogContent className="max-w-lg print:hidden">
           <DialogHeader>
             <DialogTitle>Order Confirmation</DialogTitle>
-            <DialogDescription>Review the order details before finalizing.</DialogDescription>
+            <DialogDescription>Review the order, then choose how to print.</DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[60vh] overflow-auto border rounded-lg">
+          {/* Receipt preview */}
+          <div className="max-h-[45vh] overflow-auto border rounded-lg">
             <ThermalReceipt
               items={cartSnapshot}
               subtotal={cartTotalSnapshot}
@@ -300,24 +387,78 @@ export default function CheckoutPage() {
             />
           </div>
 
-          <div className="flex gap-3 mt-4">
-            <Button variant="outline" className="flex-1" onClick={handleDigitalOnly} disabled={isSaving}>
-              <FileText className="mr-2 h-4 w-4" />
-              Digital Record Only
+          {/* Printer status row */}
+          <div className="flex gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <Receipt className="h-3.5 w-3.5" />
+              <span>Cashier:</span>
+              {cashierPrinter.connected
+                ? <PrinterBadge role="cashier" />
+                : <span className="text-gray-400">Browser fallback</span>}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <ChefHat className="h-3.5 w-3.5" />
+              <span>Kitchen:</span>
+              {kitchenPrinter.connected
+                ? <PrinterBadge role="kitchen" />
+                : <span className="text-gray-400">New-window fallback</span>}
+            </div>
+          </div>
+
+          {/* Print action buttons */}
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            {/* Print Both — primary action */}
+            <Button
+              className="col-span-2 bg-primary gap-2"
+              size="lg"
+              onClick={handleConfirmAndPrintBoth}
+              disabled={isSaving}
+            >
+              {isSaving
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <PrinterCheck className="h-4 w-4" />}
+              {isSaving ? "Saving…" : "Print Both (Receipt + Kitchen)"}
             </Button>
-            <Button className="flex-1 bg-primary" onClick={handleConfirmAndPrint} disabled={isSaving}>
-              {isSaving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Printer className="mr-2 h-4 w-4" />
-              )}
-              {isSaving ? "Saving..." : "Confirm & Print"}
+
+            {/* Receipt only */}
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handlePrintReceiptOnly}
+              disabled={isSaving}
+            >
+              <Receipt className="h-4 w-4" />
+              Customer Receipt
+            </Button>
+
+            {/* Kitchen only */}
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={handlePrintKitchenOnly}
+              disabled={isSaving}
+            >
+              <ChefHat className="h-4 w-4" />
+              Kitchen Ticket
+            </Button>
+
+            {/* Digital only */}
+            <Button
+              variant="ghost"
+              className="col-span-2 text-muted-foreground gap-2"
+              onClick={handleDigitalOnly}
+              disabled={isSaving}
+            >
+              <FileText className="h-4 w-4" />
+              Digital Record Only (No Print)
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <div className="hidden print:block">
+      {/* ── Hidden print targets ──────────────────────────────────────────────── */}
+      {/* Customer receipt — used when printTarget === "receipt" */}
+      <div className={printTarget === "receipt" ? "print:block" : "hidden"}>
         <ThermalReceipt
           ref={receiptRef}
           items={cartSnapshot}
@@ -331,6 +472,17 @@ export default function CheckoutPage() {
           dateTime={dateTime}
           includeServiceCharge={includeServiceCharge}
           paymentMethod={paymentMethod}
+        />
+      </div>
+
+      {/* Kitchen ticket — used when printTarget === "kitchen" (single-window fallback) */}
+      <div className={printTarget === "kitchen" ? "print:block" : "hidden"}>
+        <KitchenTicket
+          ref={kitchenRef}
+          items={cartSnapshot}
+          orderNumber={orderNumber}
+          serverName={serverName}
+          dateTime={dateTime}
         />
       </div>
     </>

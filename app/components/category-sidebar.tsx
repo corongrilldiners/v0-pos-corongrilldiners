@@ -37,8 +37,10 @@ import {
   Clock,
   DoorOpen,
   KeyRound,
+  Printer,
 } from "lucide-react"
 import ChangePasswordDialog from "./change-password-dialog"
+import PrinterSetupDialog from "./printer-setup-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -90,6 +92,7 @@ export default function CategorySidebar({
   const [editingCategoryName, setEditingCategoryName] = useState("")
 
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false)
+  const [isPrinterSetupOpen, setIsPrinterSetupOpen] = useState(false)
 
   const isAdmin = session?.user?.role === "admin"
   const userName = session?.user?.name ?? "Staff"
@@ -356,8 +359,17 @@ export default function CategorySidebar({
         </div>
       </div>
 
-      {/* Sign Out + Change Password */}
+      {/* Bottom actions */}
       <div className="p-3 border-t space-y-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-xs gap-2 h-8 text-muted-foreground hover:text-foreground hover:bg-muted"
+          onClick={() => setIsPrinterSetupOpen(true)}
+        >
+          <Printer className="h-3.5 w-3.5" />
+          Printer Setup
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -381,6 +393,10 @@ export default function CategorySidebar({
       <ChangePasswordDialog
         open={isChangePasswordOpen}
         onOpenChange={setIsChangePasswordOpen}
+      />
+      <PrinterSetupDialog
+        open={isPrinterSetupOpen}
+        onOpenChange={setIsPrinterSetupOpen}
       />
     </div>
   )
