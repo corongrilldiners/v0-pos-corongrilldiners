@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
 import pool from "@/lib/db"
 
 export async function POST(request: Request) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
   try {
     const body = await request.json()
     const {
@@ -14,8 +21,9 @@ export async function POST(request: Request) {
       amountTendered,
       changeAmount,
       serverName,
-      createdBy,
     } = body
+
+    const sessionUsername = (session.user as any).username ?? session.user.name ?? serverName
 
     const result = await pool.query(
       `INSERT INTO public.sales
@@ -32,7 +40,7 @@ export async function POST(request: Request) {
         amountTendered,
         changeAmount,
         serverName,
-        createdBy ?? serverName,
+        sessionUsername,
       ]
     )
 
@@ -44,6 +52,14 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   try {
     const { searchParams } = new URL(request.url)
     const date = searchParams.get("date") || new Date().toISOString().split("T")[0]
