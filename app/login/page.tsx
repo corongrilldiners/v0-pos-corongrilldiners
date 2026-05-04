@@ -38,6 +38,8 @@ export default function LoginPage() {
       setIsLoading(false)
       if (result.error === "DatabaseUnavailable") {
         setError("Unable to reach the database. Please try again later.")
+      } else if (result.error === "RateLimited") {
+        setError("Too many login attempts. Please wait a minute and try again.")
       } else {
         setError("Invalid username or password. Please try again.")
       }
