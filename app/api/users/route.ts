@@ -4,6 +4,13 @@ import { authOptions } from "@/lib/auth"
 import pool from "@/lib/db"
 import bcrypt from "bcryptjs"
 
+function pgErrorCode(err: unknown): string | undefined {
+  if (err !== null && typeof err === "object" && "code" in err) {
+    return (err as { code: unknown }).code as string
+  }
+  return undefined
+}
+
 export async function GET() {
   const session = await getServerSession(authOptions)
   if (!session?.user || session.user.role !== "admin") {
@@ -15,8 +22,8 @@ export async function GET() {
       `SELECT id, username, name, role, created_at FROM public.users ORDER BY role DESC, name ASC`
     )
     return NextResponse.json({ users: result.rows })
-  } catch (error) {
-    console.error("Failed to fetch users:", error)
+  } catch (err) {
+    console.error("Failed to fetch users:", err)
     return NextResponse.json({ error: "Failed to fetch users" }, { status: 500 })
   }
 }
@@ -31,7 +38,10 @@ export async function POST(request: Request) {
     const { username, name, password, role } = await request.json()
 
     if (!username || !name || !password) {
-      return NextResponse.json({ error: "Username, name, and password are required" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Username, name, and password are required" },
+        { status: 400 }
+      )
     }
 
     const allowedRole = role === "admin" ? "admin" : "cashier"
@@ -45,11 +55,11 @@ export async function POST(request: Request) {
     )
 
     return NextResponse.json({ user: result.rows[0] })
-  } catch (error: any) {
-    if (error?.code === "23505") {
+  } catch (err) {
+    if (pgErrorCode(err) === "23505") {
       return NextResponse.json({ error: "Username already taken" }, { status: 409 })
     }
-    console.error("Failed to create user:", error)
+    console.error("Failed to create user:", err)
     return NextResponse.json({ error: "Failed to create user" }, { status: 500 })
   }
 }
@@ -92,8 +102,8 @@ export async function PUT(request: Request) {
     }
 
     return NextResponse.json({ user: result.rows[0] })
-  } catch (error) {
-    console.error("Failed to update user:", error)
+  } catch (err) {
+    console.error("Failed to update user:", err)
     return NextResponse.json({ error: "Failed to update user" }, { status: 500 })
   }
 }
@@ -123,7 +133,7 @@ export async function DELETE(request: Request) {
       const adminCount = await pool.query(
         "SELECT COUNT(*) FROM public.users WHERE role = 'admin'"
       )
-      if (parseInt(adminCount.rows[0].count) <= 1) {
+      if (parseInt(adminCount.rows[0].count, 10) <= 1) {
         return NextResponse.json(
           { error: "Cannot delete the last admin account" },
           { status: 400 }
@@ -133,8 +143,8 @@ export async function DELETE(request: Request) {
 
     await pool.query("DELETE FROM public.users WHERE id = $1", [id])
     return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Failed to delete user:", error)
+  } catch (err) {
+    console.error("Failed to delete user:", err)
     return NextResponse.json({ error: "Failed to delete user" }, { status: 500 })
   }
 }

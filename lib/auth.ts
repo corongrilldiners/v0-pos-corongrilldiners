@@ -1,4 +1,4 @@
-import type { NextAuthOptions, User } from "next-auth"
+import type { NextAuthOptions, User, Session } from "next-auth"
 import type { JWT } from "next-auth/jwt"
 import CredentialsProvider from "next-auth/providers/credentials"
 import pool from "@/lib/db"
@@ -52,7 +52,7 @@ export const authOptions: NextAuthOptions = {
       }
       return token
     },
-    async session({ session, token }: { session: any; token: JWT }) {
+    async session({ session, token }: { session: Session; token: JWT }) {
       if (session.user) {
         session.user.role = token.role
         session.user.id = token.id
