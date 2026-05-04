@@ -78,7 +78,8 @@ export async function PATCH(request: Request) {
          COALESCE(SUM(grand_total), 0)::float AS total_sales
        FROM public.sales
        WHERE (created_by = $1 OR created_by = $2)
-         AND created_at >= $3`,
+         AND created_at >= $3
+         AND COALESCE(status, 'completed') = 'completed'`,
       [
         shift.cashier_name,
         shift.cashier_username,

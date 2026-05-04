@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { signOut } from "next-auth/react"
 import { Wallet, CheckCircle, AlertTriangle, TrendingUp, TrendingDown, Loader2, Printer } from "lucide-react"
 import {
   Dialog,
@@ -63,9 +64,7 @@ export default function ShiftCloseModal({ open, shift, onClose, onOpenChange }: 
   }
 
   const handleDone = () => {
-    setClosedShift(null)
-    setActualCash("")
-    onOpenChange(false)
+    signOut({ callbackUrl: "/login" })
   }
 
   if (closedShift) {
@@ -120,7 +119,9 @@ export default function ShiftCloseModal({ open, shift, onClose, onOpenChange }: 
             <Button variant="outline" className="flex-1" onClick={handlePrint}>
               <Printer className="mr-2 h-4 w-4" />Print
             </Button>
-            <Button className="flex-1" onClick={handleDone}>Done</Button>
+            <Button className="flex-1 bg-orange-600 hover:bg-orange-700" onClick={handleDone}>
+              Done &amp; Sign Out
+            </Button>
           </div>
 
           {/* Print-only version */}

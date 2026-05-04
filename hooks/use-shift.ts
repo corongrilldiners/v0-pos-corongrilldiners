@@ -83,7 +83,8 @@ export function useShift() {
       if (!res.ok) return null
       const data = await res.json()
       setShift(data.shift)
-      setShowCloseModal(false)
+      // Do NOT close the modal here — the modal shows the summary screen
+      // and will trigger sign-out when the cashier clicks Done.
       return data.shift
     } catch {
       return null
