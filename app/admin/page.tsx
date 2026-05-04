@@ -246,7 +246,7 @@ export default function AdminPage() {
           ) : activeSection === "shifts" ? (
             <ShiftsSection shifts={shifts} selectedDate={selectedDate} />
           ) : (
-            <StaffSection staff={staff} />
+            <StaffSection staff={staff} onRefresh={fetchStaff} />
           )}
         </div>
       </div>
@@ -635,23 +635,97 @@ function ProductFormModal({
 
 // ─── Staff Accounts Section ───────────────────────────────────────────────────
 
-function StaffSection({ staff }: { staff: StaffUser[] }) {
+function StaffSection({ staff, onRefresh }: { staff: StaffUser[]; onRefresh: () => Promise<void> }) {
+  const [showModal, setShowModal] = useState(false)
+  const [editingUser, setEditingUser] = useState<StaffUser | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+
+  const flash = (msg: string, type: "ok" | "err") => {
+    if (type === "ok") { setSuccess(msg); setTimeout(() => setSuccess(""), 3000) }
+    else { setError(msg); setTimeout(() => setError(""), 4000) }
+  }
+
+  const handleSave = async (data: { username: string; name: string; password: string; role: string }) => {
+    setSaving(true)
+    setError("")
+    try {
+      const isEdit = !!editingUser
+      const res = await fetch("/api/users", {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(isEdit ? { id: editingUser.id, name: data.name, password: data.password || undefined } : data),
+      })
+      const json = await res.json()
+      if (!res.ok) { flash(json.error ?? "Failed to save", "err"); return }
+      await onRefresh()
+      setShowModal(false)
+      setEditingUser(null)
+      flash(isEdit ? "Account updated." : `Account created. Password: ${data.password}`, "ok")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (user: StaffUser) => {
+    if (!confirm(`Delete "${user.name}" (@${user.username})? This cannot be undone.`)) return
+    setDeletingId(user.id)
+    setError("")
+    try {
+      const res = await fetch("/api/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: user.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) { flash(json.error ?? "Failed to delete", "err"); return }
+      await onRefresh()
+      flash(`${user.name} removed.`, "ok")
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const admins = staff.filter((u) => u.role === "admin")
-  const cashiers = staff.filter((u) => u.role === "staff")
+  const cashiers = staff.filter((u) => u.role === "cashier")
+  const sorted = [...admins, ...cashiers]
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
+      {success && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-4 py-2.5 rounded-lg text-sm">
+          <CheckCircle className="h-4 w-4 flex-shrink-0" />{success}
+        </div>
+      )}
+      {error && (
+        <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-lg text-sm">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
         <div className="p-5 border-b flex items-center justify-between">
-          <h2 className="font-semibold">All Staff Accounts</h2>
-          <span className="text-sm text-muted-foreground">{staff.length} account{staff.length !== 1 ? "s" : ""}</span>
+          <div>
+            <h2 className="font-semibold">Staff Accounts</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{staff.length} account{staff.length !== 1 ? "s" : ""}</p>
+          </div>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={() => { setEditingUser(null); setShowModal(true) }}
+          >
+            <Plus className="h-4 w-4" />Add Staff
+          </Button>
         </div>
-        {staff.length === 0 ? (
+
+        {sorted.length === 0 ? (
           <EmptyState icon={Users} message="No staff accounts found." />
         ) : (
           <div className="divide-y">
-            {[...admins, ...cashiers].map((user) => (
-              <div key={user.id} className="flex items-center gap-4 px-5 py-3 hover:bg-gray-50">
+            {sorted.map((user) => (
+              <div key={user.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50">
                 <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                   <span className="text-sm font-bold text-primary">
                     {user.name.charAt(0).toUpperCase()}
@@ -670,13 +744,143 @@ function StaffSection({ staff }: { staff: StaffUser[] }) {
                 >
                   {user.role === "admin" ? "Admin" : "Cashier"}
                 </Badge>
-                <p className="text-xs text-muted-foreground flex-shrink-0">
+                <p className="text-xs text-muted-foreground flex-shrink-0 hidden sm:block">
                   Since {new Date(user.created_at).toLocaleDateString("en-PH", { month: "short", year: "numeric" })}
                 </p>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-gray-500 hover:text-primary"
+                    onClick={() => { setEditingUser(user); setShowModal(true) }}
+                    title="Edit account"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-gray-500 hover:text-red-600"
+                    onClick={() => handleDelete(user)}
+                    disabled={deletingId === user.id}
+                    title="Delete account"
+                  >
+                    {deletingId === user.id
+                      ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      : <Trash2 className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
         )}
+      </div>
+
+      {showModal && (
+        <StaffFormModal
+          user={editingUser}
+          saving={saving}
+          onSave={handleSave}
+          onClose={() => { setShowModal(false); setEditingUser(null) }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Staff Form Modal ─────────────────────────────────────────────────────────
+
+function StaffFormModal({
+  user, saving, onSave, onClose,
+}: {
+  user: StaffUser | null
+  saving: boolean
+  onSave: (data: { username: string; name: string; password: string; role: string }) => void
+  onClose: () => void
+}) {
+  const isEdit = !!user
+  const [username, setUsername] = useState(user?.username ?? "")
+  const [name, setName] = useState(user?.name ?? "")
+  const [password, setPassword] = useState("")
+  const [role, setRole] = useState(user?.role ?? "cashier")
+  const [showPw, setShowPw] = useState(false)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isEdit && !password.trim()) return
+    onSave({ username, name, password, role })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-sm bg-white rounded-xl shadow-xl p-6 mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-bold">{isEdit ? "Edit Account" : "Add Staff Account"}</h2>
+          <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Username</Label>
+            <Input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. cashier5"
+              required
+              disabled={isEdit}
+              className={isEdit ? "bg-gray-50 text-gray-500" : ""}
+            />
+            {isEdit && <p className="text-xs text-muted-foreground">Username cannot be changed.</p>}
+          </div>
+          <div className="space-y-1.5">
+            <Label>Full Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Cashier 5"
+              required
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>{isEdit ? "New Password (leave blank to keep current)" : "Password"}</Label>
+            <div className="relative">
+              <Input
+                type={showPw ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={isEdit ? "Enter new password to change" : "Set a password"}
+                required={!isEdit}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPw((v) => !v)}
+                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+              >
+                {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          {!isEdit && (
+            <div className="space-y-1.5">
+              <Label>Role</Label>
+              <Select value={role} onValueChange={setRole}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cashier">Cashier</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="flex gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button type="submit" disabled={saving} className="flex-1 gap-2">
+              {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {isEdit ? "Save Changes" : "Create Account"}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   )
