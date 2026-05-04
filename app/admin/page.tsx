@@ -8,7 +8,7 @@ import {
   LogOut, RefreshCw, TrendingUp, ShoppingBag, Wallet, CreditCard,
   CheckCircle, AlertTriangle, Lock, Plus, Pencil, Trash2,
   Eye, EyeOff, X, Save, KeyRound, History, UserPlus, KeySquare, UserX, UserCog,
-  Archive, ArchiveRestore, ChevronDown, ChevronUp, FileText, Loader2, Ban,
+  Archive, ArchiveRestore, ChevronDown, ChevronUp, FileText, Loader2, Ban, ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -84,13 +84,14 @@ function PaymentIcon({ method }: { method: string }) {
 
 // ─── Sidebar nav items ────────────────────────────────────────────────────────
 
-type Section = "dashboard" | "shifts" | "menu" | "staff" | "activity"
+type Section = "dashboard" | "shifts" | "menu" | "staff" | "activity" | "security"
 const NAV_ITEMS: { id: Section; label: string; icon: React.ElementType }[] = [
-  { id: "dashboard", label: "Dashboard",       icon: LayoutDashboard  },
-  { id: "shifts",    label: "Shift Reports",   icon: Clock            },
-  { id: "menu",      label: "Menu Management", icon: UtensilsCrossed  },
-  { id: "staff",     label: "Staff Accounts",  icon: Users            },
-  { id: "activity",  label: "Activity Log",    icon: History          },
+  { id: "dashboard", label: "Dashboard",        icon: LayoutDashboard  },
+  { id: "shifts",    label: "Shift Reports",    icon: Clock            },
+  { id: "menu",      label: "Menu Management",  icon: UtensilsCrossed  },
+  { id: "staff",     label: "Staff Accounts",   icon: Users            },
+  { id: "activity",  label: "Activity Log",     icon: History          },
+  { id: "security",  label: "Security History", icon: ShieldCheck      },
 ]
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ export default function AdminPage() {
   const [salesData, setSalesData] = useState<SalesData | null>(null)
   const [staff, setStaff] = useState<StaffUser[]>([])
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([])
+  const [securityLog, setSecurityLog] = useState<AuditEntry[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [changePasswordOpen, setChangePasswordOpen] = useState(false)
   const [shiftsKey, setShiftsKey] = useState(0)
@@ -126,6 +128,13 @@ export default function AdminPage() {
     if (res.ok) { const j = await res.json(); setAuditLog(j.entries ?? []) }
   }, [])
 
+  const fetchSecurityLog = useCallback(async () => {
+    const userId = Number(session?.user?.id)
+    if (!Number.isFinite(userId) || userId <= 0) return
+    const res = await fetch(`/api/audit-log?actor_id=${userId}&action=change_own_password`)
+    if (res.ok) { const j = await res.json(); setSecurityLog(j.entries ?? []) }
+  }, [session?.user])
+
   const refreshCurrent = useCallback(async () => {
     setIsLoading(true)
     try {
@@ -133,10 +142,11 @@ export default function AdminPage() {
       else if (activeSection === "shifts") setShiftsKey(k => k + 1)
       else if (activeSection === "staff") await fetchStaff()
       else if (activeSection === "activity") await fetchAuditLog()
+      else if (activeSection === "security") await fetchSecurityLog()
     } finally {
       setIsLoading(false)
     }
-  }, [activeSection, selectedDate, fetchSales, fetchStaff, fetchAuditLog])
+  }, [activeSection, selectedDate, fetchSales, fetchStaff, fetchAuditLog, fetchSecurityLog])
 
   useEffect(() => {
     if (status === "authenticated" && isAdmin && activeSection !== "menu") refreshCurrent()
@@ -279,6 +289,12 @@ export default function AdminPage() {
             <ShiftsSection key={`${selectedDate}-${shiftsKey}`} selectedDate={selectedDate} />
           ) : activeSection === "activity" ? (
             <AuditLogSection entries={auditLog} />
+          ) : activeSection === "security" ? (
+            <SecurityHistorySection
+              entries={securityLog}
+              adminName={session?.user?.name ?? ""}
+              onChangePassword={() => setChangePasswordOpen(true)}
+            />
           ) : (
             <StaffSection staff={staff} onRefresh={fetchStaff} />
           )}
@@ -843,6 +859,67 @@ function AuditLogSection({ entries }: { entries: AuditEntry[] }) {
           })}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Security History Section ─────────────────────────────────────────────────
+
+function SecurityHistorySection({
+  entries,
+  adminName,
+  onChangePassword,
+}: {
+  entries: AuditEntry[]
+  adminName: string
+  onChangePassword: () => void
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border shadow-sm">
+        <div className="p-5 border-b flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="font-semibold">My Security History</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Password changes for your account ({adminName})
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              {entries.length} event{entries.length !== 1 ? "s" : ""}
+            </span>
+            <Button variant="outline" size="sm" className="gap-2" onClick={onChangePassword}>
+              <KeyRound className="h-3.5 w-3.5" />
+              Change Password
+            </Button>
+          </div>
+        </div>
+        {entries.length === 0 ? (
+          <EmptyState icon={ShieldCheck} message="No password changes recorded for your account yet." />
+        ) : (
+          <div className="divide-y">
+            {entries.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-4 px-5 py-3.5 hover:bg-gray-50">
+                <div className="mt-0.5 flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center text-purple-600 bg-purple-50">
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium text-sm">Password Changed</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">{entry.details}</p>
+                </div>
+                <div className="flex-shrink-0 text-right">
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(entry.created_at).toLocaleString("en-PH", {
+                      month: "short", day: "numeric", year: "numeric",
+                      hour: "2-digit", minute: "2-digit", hour12: true,
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
